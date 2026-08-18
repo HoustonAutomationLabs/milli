@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Palette carried over from the strategy brief: cool, trustworthy neutrals with
+  a deep pine accent. Semantic good/warn/risk are separate from the accent.
+  Themed via tokens so the app reads correctly in light and dark.
+*/
+:root {
+  --canvas: #f6f8f7;
+  --surface: #ffffff;
+  --surface-2: #f1f4f2;
+  --ink: #18211d;
+  --ink-soft: #414c47;
+  --muted: #6c7772;
+  --line: #e1e6e3;
+  --accent: #1f6f5c;
+  --accent-soft: #e7f0ec;
+  --good: #2f7d4f;
+  --good-bg: #e9f3ec;
+  --warn: #916012;
+  --warn-bg: #f5edda;
+  --risk: #a33a30;
+  --risk-bg: #f7e7e4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #10140f;
+    --surface: #191e1a;
+    --surface-2: #20261f;
+    --ink: #e9efe9;
+    --ink-soft: #b6c0ba;
+    --muted: #828d86;
+    --line: #282f28;
+    --accent: #5cbda0;
+    --accent-soft: #1a2a24;
+    --good: #6bbd86;
+    --good-bg: #16271b;
+    --warn: #d3a24e;
+    --warn-bg: #2a2211;
+    --risk: #e08a7e;
+    --risk-bg: #2c1815;
+  }
+}
+
+:root[data-theme="dark"] {
+  --canvas: #10140f;
+  --surface: #191e1a;
+  --surface-2: #20261f;
+  --ink: #e9efe9;
+  --ink-soft: #b6c0ba;
+  --muted: #828d86;
+  --line: #282f28;
+  --accent: #5cbda0;
+  --accent-soft: #1a2a24;
+  --good: #6bbd86;
+  --good-bg: #16271b;
+  --warn: #d3a24e;
+  --warn-bg: #2a2211;
+  --risk: #e08a7e;
+  --risk-bg: #2c1815;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-feature-settings: "cv02", "cv03", "cv04";
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
