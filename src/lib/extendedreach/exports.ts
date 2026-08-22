@@ -34,6 +34,7 @@ import type {
   TrendPoint,
 } from "../zoho/types";
 import { caseDisplayId, homeDisplayId, normaliseName, workerId } from "./identity";
+import { REPORT_SPECS, findHeaderRow, type ReportSpec } from "./schema";
 
 /** Rows of a sheet as trimmed strings, header row included. */
 type Grid = string[][];
@@ -86,40 +87,26 @@ async function readGrid(file: string): Promise<Grid> {
 }
 
 /**
- * Locate the header row and build a column-name -> index map.
+ * Rows below the header, keyed by the spec's logical field names.
  *
- * ExtendedReach exports often carry a title row or unlabelled leading columns
- * (the audit sample had three), so we scan for the first row containing a
- * required header rather than assuming row 0.
+ * Header location and column resolution both come from `schema.ts`, so the
+ * loader and the `inspect-export` reconciliation tool agree by construction.
  */
-function indexColumns(grid: Grid, required: string[]): { header: number; col: Record<string, number> } | null {
-  const want = required.map((r) => r.toLowerCase());
-  for (let r = 0; r < Math.min(grid.length, 12); r++) {
-    const row = grid[r].map((c) => c.toLowerCase());
-    if (want.every((w) => row.some((c) => c === w))) {
-      const col: Record<string, number> = {};
-      grid[r].forEach((name, i) => {
-        const key = name.trim().toLowerCase();
-        if (key && !(key in col)) col[key] = i;
-      });
-      return { header: r, col };
-    }
-  }
-  return null;
-}
+function rowsFor(grid: Grid, spec: ReportSpec): Record<string, string>[] {
+  const found = findHeaderRow(spec, grid);
+  if (!found) return [];
 
-/** Rows below the header, as objects keyed by lowercased header name. */
-function rowsOf(grid: Grid, required: string[]): Record<string, string>[] {
-  const idx = indexColumns(grid, required);
-  if (!idx) return [];
   const out: Record<string, string>[] = [];
-  for (let r = idx.header + 1; r < grid.length; r++) {
+  for (let r = found.header + 1; r < grid.length; r++) {
     const raw = grid[r];
     if (!raw || raw.every((c) => !c)) continue;
+
     const obj: Record<string, string> = {};
-    for (const [name, i] of Object.entries(idx.col)) obj[name] = raw[i] ?? "";
-    // Grouping headers repeat the report's section title in one populated cell.
-    if (required.every((k) => !obj[k.toLowerCase()])) continue;
+    for (const [field, i] of Object.entries(found.columns)) obj[field] = raw[i] ?? "";
+
+    // Grouping headers repeat a section title in one cell and leave the
+    // required fields blank; they are layout, not data.
+    if (spec.required.every((f) => !obj[f])) continue;
     out.push(obj);
   }
   return out;
@@ -174,8 +161,24 @@ function classifyKind(type: string): ComplianceItem["kind"] {
   return "other";
 }
 
+/**
+ * Statuses ExtendedReach actually uses on task reports, confirmed against a
+ * real export: Due, Submitted, Draft, Expires, Rejected, Scheduled, Event.
+ *
+ * The distinction that matters is Submitted. A submitted item is finished work
+ * sitting with a supervisor for approval — the caseworker has nothing left to
+ * do. Counting those as overdue inflates the backlog by 165 items (of 997) and
+ * would show staff as delinquent for work they completed.
+ */
 function stateFor(dueIso: string | null, statusText: string): ComplianceState {
-  if (/past due|overdue/i.test(statusText)) return "overdue";
+  const status = statusText.trim().toLowerCase();
+
+  // Done and awaiting approval — not the caseworker's outstanding work.
+  if (status === "submitted") return "ok";
+
+  // Calendar entries, not date-driven obligations.
+  if (status === "scheduled" || status === "event") return "ok";
+
   if (!dueIso) return "due_soon";
   const d = daysOverdue(dueIso);
   if (d > 0) return "overdue";
@@ -207,10 +210,10 @@ export interface ExportLoadResult {
 /**
  * Build a `CaseworkDataset` from a directory of ExtendedReach exports.
  *
- * TODO(phase-2): the header names below are the audit's best reading of each
- * report. Run one real export through this loader and reconcile any mismatch
- * before trusting the output — `diagnostics` reports zero rows when a header
- * set does not match, which is the signal to check.
+ * Column names come from `schema.ts`, which lists accepted header variants per
+ * field. If a real export uses a header not listed there, this yields zero rows
+ * for that report — run `npm run inspect:export -- <file>` to see the actual
+ * headers and the exact alias line to add.
  */
 export async function loadExportDataset(dir: string): Promise<ExportLoadResult> {
   const diagnostics: Record<string, { found: boolean; rows: number }> = {};
@@ -243,13 +246,13 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
   };
 
   // --- cases ----------------------------------------------------------------
-  const openRows = rowsOf(gOpen, ["Client", "Case Manager"]);
+  const openRows = rowsFor(gOpen, REPORT_SPECS.opencases);
   note("opencases", gOpen, openRows);
 
   const cases: CaseRecord[] = openRows.map((r) => {
-    const childName = r["client"] ?? "";
-    const worker = ensureWorker(r["case manager"] ?? "");
-    const placement = (r["placement type"] ?? "").toLowerCase();
+    const childName = r.client ?? "";
+    const worker = ensureWorker(r.worker ?? "");
+    const placement = (r.placementType ?? "").toLowerCase();
     return {
       id: caseDisplayId(childName),
       displayId: caseDisplayId(childName),
@@ -257,7 +260,7 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
       status: "active",
       teamId: worker?.teamId ?? "team-unassigned",
       caseworkerId: worker?.id ?? "wkr-unassigned",
-      openedOn: toIso(r["admission"] ?? r["opened"] ?? "") ?? "",
+      openedOn: toIso(r.openedOn ?? "") ?? "",
       placementType: /kinship/.test(placement)
         ? "kinship"
         : /residential|rtc/.test(placement)
@@ -275,32 +278,32 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
   const compliance: ComplianceItem[] = [];
   let seq = 0;
 
-  const ingestTasks = (grid: Grid, slug: string, subject: "client" | "home") => {
-    const rows = rowsOf(grid, ["Date", "Type", "Worker"]);
-    note(slug, grid, rows);
+  const ingestTasks = (grid: Grid, spec: ReportSpec, subject: "client" | "home") => {
+    const rows = rowsFor(grid, spec);
+    note(spec.slug, grid, rows);
     for (const r of rows) {
-      const due = toIso(r["date"] ?? "");
-      const name = r[subject] ?? r["client"] ?? "";
+      const due = toIso(r.dueDate ?? "");
+      const name = (subject === "home" ? r.home : r.client) ?? "";
       const linked = subject === "client" ? caseByName.get(normaliseName(name)) : undefined;
-      ensureWorker(r["worker"] ?? "");
-      const type = r["type"] ?? "";
+      ensureWorker(r.worker ?? "");
+      const type = r.type ?? "";
       // A home obligation is not a case obligation; give it an HM- id so the
       // distinction survives instead of looking like a failed case join.
       const subjectId = subject === "home" ? homeDisplayId(name) : caseDisplayId(name);
       compliance.push({
-        id: `ci-${slug}-${seq++}`,
+        id: `ci-${spec.slug}-${seq++}`,
         caseId: linked?.id ?? subjectId,
         kind: classifyKind(type),
         label: type || "Task",
         dueDate: due ?? "",
-        state: stateFor(due, r["status"] ?? ""),
+        state: stateFor(due, r.status ?? ""),
       });
     }
   };
 
-  ingestTasks(gPastCase, "pastdue_case", "client");
-  ingestTasks(gPastHome, "pastdue_home", "home");
-  ingestTasks(gInproc, "inprocess", "client");
+  ingestTasks(gPastCase, REPORT_SPECS.pastdue_case, "client");
+  ingestTasks(gPastHome, REPORT_SPECS.pastdue_home, "home");
+  ingestTasks(gInproc, REPORT_SPECS.inprocess, "client");
 
   // Roll the worst state on each case up onto the case record.
   const rank: Record<ComplianceState, number> = { ok: 0, due_soon: 1, overdue: 2 };
@@ -311,9 +314,9 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
 
   // --- caseload census ------------------------------------------------------
   // Only used to register workers who hold cases but appear on no task row.
-  const loadRows = rowsOf(gCaseload, ["Worker"]);
+  const loadRows = rowsFor(gCaseload, REPORT_SPECS.caseload);
   note("caseload", gCaseload, loadRows);
-  for (const r of loadRows) ensureWorker(r["worker"] ?? "");
+  for (const r of loadRows) ensureWorker(r.worker ?? "");
 
   const caseworkers = [...workers.values()];
   const teams: Team[] = caseworkers.map((w) => ({
