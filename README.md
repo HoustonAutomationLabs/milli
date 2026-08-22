@@ -5,13 +5,25 @@ casework data — cases, caseloads, and date-driven compliance obligations — t
 audiences: **executives (CEO)**, **managers**, and **caseworkers (staff)**.
 
 ExtendedReach stays the system of record. This app is a **presentation/analytics layer** on top of
-it, reading data through **Zoho Analytics** (the agency's only confirmed data tap). See the strategy
-brief for why this "dashboard-on-top" approach was chosen over building a full replacement.
+it. See the strategy brief for why this "dashboard-on-top" approach was chosen over building a full
+replacement.
+
+Data reaches it through **scheduled Excel exports**, not an API. A read-only audit of the live
+ExtendedReach tenant established that the system has no API on this plan and **no report-level
+scheduling**, that the Zoho Analytics feed costs $500 + $125/month and was declined by the executive
+team — and that it is unnecessary, because every metric this dashboard needs is reachable through
+one-click Excel exports. `scripts/export-extendedreach.mjs` automates those clicks.
+**Read [`docs/extendedreach-audit.md`](docs/extendedreach-audit.md) before changing the data path.**
 
 > **Status: scaffold.** This is Phase 1 groundwork — the architecture, role model, data-access
 > boundary, and UI are in place and run end-to-end on synthetic data. It is **not** production- or
-> HIPAA-certified. The auth provider and the live Zoho query path are deliberately stubbed pending
-> Phase 0 confirmation (see [Open items](#open-items-phase-0)).
+> HIPAA-certified. The auth provider remains stubbed. The export data path is implemented but its
+> column mappings need reconciling against one real workbook before they can be trusted
+> (see [Open items](#open-items-phase-0)).
+
+> **Scope: Foster Care only.** The agency runs seven programs, but only Foster Care is configured in
+> ExtendedReach. The other six are tracked elsewhere and join in a later phase from their own
+> sources.
 
 ---
 
@@ -52,11 +64,19 @@ src/
     auth.ts              # session cookie — DEV/MOCK, swap for a real IdP
     audit.ts             # PHI-access audit logging
     metrics.ts           # role-scoped aggregation over the dataset
+    extendedreach/
+      exports.ts         # parses exported .xlsx workbooks -> CaseworkDataset
+      identity.ts        # name normalisation + stable pseudonymous ids
     zoho/
-      client.ts          # the ONE data boundary (mock | live Zoho Analytics)
+      client.ts          # the ONE data boundary (mock | exports | zoho)
       types.ts           # domain types the dashboard needs
       mock.ts            # synthetic fixtures + dev accounts
+scripts/
+  export-extendedreach.mjs  # Playwright exporter — clicks the Excel buttons
 middleware.ts            # edge guard: bounce unauthenticated requests to /login
+
+The `zoho/` directory keeps its name for now to avoid churning imports; Zoho is
+no longer the intended data path.
 ```
 
 ## Roles and access
@@ -91,26 +111,50 @@ code** — a signed BAA, a hardened host, and policy. What's in place:
 Still required before any real data (not code — process + infra):
 
 - A **BAA-capable identity provider** replacing the mock auth in `src/lib/auth.ts`.
-- A **signed BAA** with the hosting provider and every subprocessor touching PHI (Zoho included).
+- A **signed BAA** with the hosting provider and every subprocessor touching PHI.
 - A **HIPAA-eligible host** (AWS / GCP / Azure). Note: Vercel's default tier is not HIPAA-covered.
 - Confirmation of **Texas DFPS** child-welfare data-handling requirements.
 
 ## Connecting live data
 
-Set `DATA_SOURCE=zoho` and fill in the `ZOHO_*` vars in `.env.local`. The live query path in
-`src/lib/zoho/client.ts` is stubbed with the exact TODOs — it throws a clear error until Phase 0
-confirms the workspace/view names and OAuth credentials. Everything downstream depends only on
-`getDataset()`, so switching from mock to live changes nothing in the UI.
+`DATA_SOURCE` selects one of three modes at the single boundary in `src/lib/zoho/client.ts`.
+Everything downstream depends only on `getDataset()`, so switching modes changes nothing in the UI.
+
+| Mode | Behaviour |
+|---|---|
+| `mock` (default) | Synthetic fixtures, no network. Use for development. |
+| `exports` | **The intended production path.** Reads workbooks from `ER_EXPORT_DIR`. |
+| `zoho` | The original Zoho Analytics plan. Retained but not recommended — declined on cost, and unnecessary. Still stubbed. |
+
+To run against real exports:
+
+```bash
+node scripts/export-extendedreach.mjs --login   # once, interactive (MFA)
+node scripts/export-extendedreach.mjs           # pulls all ten reports
+DATA_SOURCE=exports npm run dev
+```
+
+See [`scripts/README.md`](scripts/README.md) for the exporter, and
+[`docs/extendedreach-audit.md`](docs/extendedreach-audit.md) for which report feeds which metric.
 
 ## Open items (Phase 0)
 
-1. **ExtendedReach → Zoho Analytics feed (critical).** Confirm it exists, the plan upgrade required,
-   its cost, refresh frequency, and exactly which fields/reports are exposed. Everything depends on
-   this — answer it before further build investment.
-2. **Hosting & BAA ownership** — we-host (vendor) vs. customer-hosts. Deferred.
-3. **Does PHI need to leave Zoho at all,** or can sensitive fields stay masked/aggregated?
-4. **Exact role data definitions** (minimum necessary per role).
-5. **Texas-specific DFPS rules** the agency is contractually held to.
+1. ~~**ExtendedReach → Zoho Analytics feed (critical).**~~ **Answered** by the system audit — the
+   feed costs $500 + $125/month, was declined, and is unnecessary. Replaced by the export path.
+   See [`docs/extendedreach-audit.md`](docs/extendedreach-audit.md).
+2. **Reconcile the export column mappings (blocking).** The header names in
+   `src/lib/extendedreach/exports.ts` are the audit's best reading of each report. Run one real
+   export through the loader and fix any mismatch — a header that does not match yields zero rows
+   and logs a warning naming the slug.
+3. **Ask the vendor for a Case ID column.** Every report identifies people by name only. With
+   sibling groups already in the data, name-matching is the weakest link in the pipeline.
+4. **Ratify the abandoned-record cutoff.** ~Half of 1,351 past-due items date from 2020–2023.
+   `ER_ABANDONED_AFTER_DAYS` defaults to 365; the exec team should confirm it before the figure is
+   reported anywhere.
+5. **Hosting & BAA ownership** — we-host (vendor) vs. customer-hosts. Deferred.
+6. **Does PHI need to leave ExtendedReach at all,** or can sensitive fields stay masked/aggregated?
+7. **Exact role data definitions** (minimum necessary per role).
+8. **Texas-specific DFPS rules** the agency is contractually held to.
 
 ---
 
