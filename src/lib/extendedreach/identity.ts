@@ -6,8 +6,8 @@
  * therefore the join key across reports, which has two consequences:
  *
  *   1. Names must be normalised aggressively before joining, or the same child
- *      appears twice because one report wrote "Muse, Ski'inez" and another
- *      "MUSE, SKI'INEZ ".
+ *      appears twice because one report wrote "Surname, Given" and another
+ *      "SURNAME,  GIVEN " with different casing and spacing.
  *   2. Every broad view needs a non-PHI identifier. We derive one from the
  *      normalised name so it is stable across runs without persisting a
  *      lookup table anywhere.
@@ -64,7 +64,7 @@ export function workerId(name: string): string {
 }
 
 /**
- * Initials for compact display: "Muse, Kayla Rena" -> "M.K."
+ * Initials for compact display: "Surname, Given Middle" -> "S.G."
  * Falls back to the first two characters when the shape is unexpected.
  */
 export function initials(name: string): string {

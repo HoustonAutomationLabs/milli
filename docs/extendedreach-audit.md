@@ -57,7 +57,8 @@ a later phase from their own data sources, which are outside ExtendedReach.
 
 No report exposes a Case ID, Child ID or Worker ID. Every view identifies people
 by **name only**, in `"Last, First"` form. The data already contains sibling
-groups (Muse, Wade, Garcia, Clark), so name-matching will eventually collide,
+groups — several sets of siblings share a surname — so name matching will
+eventually collide,
 and a single typo breaks a join.
 
 `src/lib/extendedreach/identity.ts` works around this by normalising names
