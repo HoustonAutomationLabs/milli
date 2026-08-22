@@ -38,3 +38,10 @@ yarn-error.log*
 # editor
 .vscode/
 .idea/
+
+# ExtendedReach exports contain PHI — never commit them
+/data/exports
+*.xlsx
+
+# saved browser session for the exporter — an authenticated credential
+.er-session.json
