@@ -57,7 +57,8 @@ a later phase from their own data sources, which are outside ExtendedReach.
 
 No report exposes a Case ID, Child ID or Worker ID. Every view identifies people
 by **name only**, in `"Last, First"` form. The data already contains sibling
-groups (several sets of siblings share a surname), so name-matching will eventually collide,
+groups — several sets of siblings share a surname — so name matching will
+eventually collide,
 and a single typo breaks a join.
 
 `src/lib/extendedreach/identity.ts` works around this by normalising names
@@ -141,6 +142,225 @@ Workload remains concentrated: the top worker holds 338 of 1,161 open tasks
 
 ---
 
+## Second export run — four more reports verified
+
+_2026-08-22. Four further exports were run through `npm run inspect:export`.
+All four resolved; `pastdue_case` was re-run unchanged and still reconciles at
+1,161 rows._
+
+| Report | View | Rows | Result |
+|---|---|---|---|
+| Awaiting Approval | `V_REPORTS_NEEDAPPROVAL-C` | 394 | ✓ all 8 columns |
+| Rejected | `V_TASKS_REJECTED-C` | 8 | ✓ all 9 columns |
+| Reports Completed by Date | `V_ALLBYCOMPLETION_REPORTS-C` | 145 | ✓ all 6 columns |
+| Compliance Tracking | `A_COMPLIANCE_CASES` | 52 × 76 | ✓ all 3,952 cells |
+
+Four things these files changed.
+
+### 1. Two of them are CSV — "Excel only" is not the whole picture
+
+The audit recorded that every exportable report offers Excel and nothing else.
+That holds for the report views in the Reports/Rosters/Tasks menus. It does not
+hold for everything: **Compliance Tracking and Reports Completed by Date both
+arrived as `.csv`**, and the Compliance CSV is Windows-1252 rather than UTF-8 —
+a cp1252 apostrophe in one column header decodes to `U+FFFD` under UTF-8, which
+would make that header unmatchable by the very reconciliation that has to match
+it.
+
+The reader now accepts both formats and both encodings
+(`src/lib/extendedreach/grid.ts`), and the exporter no longer assumes a
+downloaded file is `.xlsx` just because the control was labelled "Excel".
+
+**Worth confirming with the agency:** whether those two files came out of
+ExtendedReach as CSV directly, or were converted after download. The answer
+changes whether the automated exporter can fetch them unattended.
+
+### 2. The approval queue is a bigger bottleneck than the backlog suggests
+
+`pastdue_case` showed that 165 of the 997 past-due items were already
+`Submitted` — finished work awaiting a supervisor. The Awaiting Approval report
+is where all such items live, past due or not, and it holds **394 submissions**
+against **90 clients**, performed by **28 staff**.
+
+The distribution is the finding. Those 394 items are queued to **18 approvers**,
+and **one of them holds 202 — 51% of the entire approval queue.** The next
+holds 74. Casework load concentrates in this agency (top worker 29% of open
+tasks); approval load concentrates twice as hard.
+
+This is a different problem from the past-due backlog and has a different fix.
+Adding caseworker capacity does not drain a queue that is waiting on one
+approver.
+
+### 3. "Performed By" is a real performer column — unlike `Worker`
+
+The Awaiting Approval and Rejected reports carry **`Performed By`** and
+**`Submit To`** rather than `Worker`. `Performed By` names who actually did the
+work, which the `Worker` column on the task reports does not (it records who
+*entered* the item).
+
+This is a genuine header mismatch of the kind `inspect:export` exists to catch:
+`Performed By` was not in any alias list, and without it both reports would have
+loaded zero rows with no indication why.
+
+`Performed By` is still **not a caseload figure.** It is per-item attribution.
+True caseload remains `V_CASELOADS_WKR_MONTH-C`.
+
+The Rejected report also labels its date column **`Rejected`**, not `Date`.
+
+### 4. Compliance Tracking is a matrix, not a list
+
+Every other export is one row per obligation. Compliance Tracking is **one row
+per case and one column per obligation type** — 52 cases by 76 items, every
+cell filled — and the obligation names are data drawn from the agency's
+Configurator, not a fixed schema. `ReportSpec` cannot describe that shape, so
+`MatrixReportSpec` was added alongside it: it pins only the four leading
+identity columns (`Case`, `Case Manager`, `Sec. Worker`, `Current Placement`)
+and unpivots everything to their right.
+
+The complete cell vocabulary across all 3,952 cells:
+
+| Cell form | Count | Reads as |
+|---|---|---|
+| a bare date | 2,209 | done on that date |
+| `Optional` | 637 | not applicable to this case |
+| `<date> (Due)` | 389 | due |
+| `Missing` | 283 | **never provided** |
+| `<date> (Overdue)` | 264 | overdue |
+| `<date> (Expires)` | 104 | due |
+| `<date> (Expired)` | 27 | overdue |
+| `<date> (In Proc.)` | 21 | in progress |
+| `<date> (Submitted)` | 16 | awaiting approval |
+| `<date> (Sched.)` | 2 | scheduled |
+
+Netting out: **574 compliance gaps** (Missing + Overdue + Expired) and **514
+items due**, across 52 cases — a mean of 11 open compliance items per case.
+
+`Submitted` is treated as satisfied here exactly as it is in `stateFor()`, for
+the same reason. `Missing` is the one judgement call: it carries no date, so it
+cannot be aged, but it means a required document has never been provided. It
+counts as a gap and will never appear in an age bucket — which is the honest
+representation rather than dropping it or inventing a date for it.
+
+**Not yet wired into the dashboard.** Loading 3,952 matrix obligations
+alongside 1,161 tasks would more than quadruple every headline compliance
+number without the figures meaning the same thing. That is a decision for the
+exec team, not a silent side effect of adding a parser.
+
+---
+
+## Five more exports verified
+
+`opencases`, `pastdue_home`, `inprocess`, `nextcourt` and `caseload` were
+exported and run through `inspect:export`. Three matched first time; two did
+not, and both were structural rather than a wording difference. Four findings
+changed the code.
+
+### 1. `Case #` exists after all
+
+The audit concluded no report exposes a stable identifier. **The open-cases
+roster carries `Case #`, populated for all 52 rows.** It is now the case id,
+replacing the hash-of-the-name fallback — it survives spelling drift and tells
+siblings apart, which name matching cannot. The request to the vendor for an id
+column can be dropped.
+
+### 2. That roster is the most sensitive file in the set
+
+29 columns, including **`DOB` for every child, `SSN` for 16, `Medicaid #` for
+44, and `Customer #` for 50**, alongside Race and Gender. The task reports
+carry nothing like this. Two consequences:
+
+- The raw file deserves more care than the others — it is a direct-identifier
+  set, not just a name list.
+- De-identification cannot be name-substitution alone. `schema.ts` now declares
+  sensitivity per field, and identifiers are replaced with same-shaped
+  synthetic values while dates of birth are shifted by a per-person offset of
+  up to ±180 days, which keeps 43 of 52 children in the same three-year age
+  band while making every exact date wrong.
+
+Also in that report: **`Current Placement` holds the foster parents' names**,
+not a placement category — 26 of 26 distinct values are person names. The
+category is in the separate `Placement Type` column. It is now treated as PII.
+
+### 3. `Due Soon/Past Due` and `In Process` are the same tasks
+
+**1,139 of 1,157 past-due obligations — 98.4% — also appear in In Process.**
+The former is a filtered view of the latter, not additional work. Ingesting
+both naively produced 3,534 obligations where there are 2,395; the loader now
+keys on subject + type + due date and skips repeats, reporting the count in
+`diagnostics.deduplicated`.
+
+This is the single largest correction so far. Left in place it would have
+inflated the reported backlog by roughly half.
+
+### 4. `caseload` is a cross-tab
+
+Not one row per record. The shape is:
+
+```
+[year] | [worker] | [program] | Name | Jan | Feb | … | Dec
+```
+
+with the first three columns unlabelled and one row per (year, worker, client).
+The month cells are 0/1 flags, so a worker's caseload for a month is a column
+sum, not a value to read. `matrix: true` routes it to a bespoke reader.
+
+It is also the only source of history in the export set, which finally gives
+the dashboard a real trend line: **active cases ran 54 → 64 → 56 across 2026**.
+
+### Where the numbers land
+
+Loading all six reports together:
+
+| | |
+|---|---|
+| Open cases | 52 |
+| Workers | 43 |
+| Distinct obligations | 2,766 (after removing 1,337 duplicates) |
+| Overdue | 1,556 |
+| — actionable (under a year) | **902** |
+| — abandoned (over a year) | 654 |
+| Due soon | 181 |
+
+---
+
+## All ten exports verified
+
+Every report the dashboard depends on has now been run through
+`inspect:export` against a real export. **10 of 10 resolve.** Four needed
+schema work beyond an alias:
+
+**`ontime` is not a monthly rollup.** Despite the "% On Time by Program"
+label, the export is one row per completed item with its days-variance:
+`Avg Days Var. | [year] | [worker] | [type] | Date | Name`, columns 1–3
+unlabelled. That is better than a rollup — the percentage is derived as the
+share of rows with variance ≤ 0, so it can be cut by month, worker or task
+type. Over 3,184 completed items the agency runs **41.1% on time**, ranging
+37–48% month to month, with mean lateness improving from +61 days in January
+to +17 in August.
+
+**`openbeds` carries more than beds.** Street `Address` and `Phone` for every
+home, and an `Active Placements` column listing the children in each home **by
+name, gender and age**. All three are declared sensitive.
+
+**`staffexp`** is `Date | Title | Name` — the requirement is in `Title`.
+
+**`caseload`** is the cross-tab described above.
+
+### The free-text lesson
+
+De-identifying these together surfaced a real defect. Free text was being
+scrubbed against each file's *own* name columns, but a case note routinely
+names someone who appears as a name column only in a *different* report — the
+open-beds placements column lists children who are nowhere in that file's own
+name columns. Those names survived. The synthetic mapping is now built once
+across the whole run and shared, which is also why all reports must be
+de-identified in a single invocation.
+
+A backstop now also catches the "Ms. Surname" form that case notes use for
+people who appear in no name column anywhere.
+
+---
+
 ## Report inventory — what feeds what
 
 The dashboard's five "spine" metrics all map to reports that already exist.
@@ -171,7 +391,8 @@ Supporting context:
 
 **The `Worker` column means "entered by", not "assigned to."** Confirmed with
 the agency. In an August sample of 145 completions across 41 children and 9
-workers, one person logged 65 items — 45% of the total. That is a
+workers — the `V_ALLBYCOMPLETION_REPORTS-C` export, since verified — one person
+logged 65 items, 45% of the total. That is a
 **documentation-entry concentration** and a single point of failure in the
 process; it is *not* evidence of workload imbalance, and must never be labelled
 as caseload in the UI. True caseload comes only from `V_CASELOADS_WKR_MONTH-C`.

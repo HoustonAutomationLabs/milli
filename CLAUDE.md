@@ -52,8 +52,34 @@ wrong.** This was requested explicitly. Concretely:
 - **`Submitted` is not overdue.** 165 of 997 past-due items are finished work
   awaiting supervisor approval; counting them overstates the backlog and makes
   staff look delinquent for work they completed.
-- Verified real figures: 1,161 open tasks, 997 past due, 164 upcoming, 31% of
-  past-due over a year old, ~35% on-time completion, 32 workers, 151 clients.
+- **`Due Soon/Past Due` is a filtered view of `In Process`** — 98.4% overlap.
+  Ingesting both without deduping inflates the backlog by roughly half. The
+  loader keys on subject + type + due date.
+- **`Case #` exists** on the open-cases roster and is the case id. The older
+  note that no stable identifier exists is wrong.
+- **The open-cases roster carries DOB, SSN, Medicaid # and Customer #.** It is
+  the most sensitive export; `schema.ts` declares per-field sensitivity and the
+  de-identifier replaces identifiers and shifts birth dates.
+- **`caseload` is a cross-tab**, not rows: `[year|worker|program] Name Jan…Dec`
+  with 0/1 flags. Caseload for a month is a column sum. It is also the only
+  source of trend history.
+- Verified real figures: 52 open cases, 43 workers, 2,766 distinct obligations,
+  1,556 overdue (902 actionable, 654 over a year), 181 due soon, 41.1% on-time
+  across 3,184 completed items, active caseload 54–64 across 2026.
+- **De-identify every report in ONE run.** Free text in one report names people
+  who appear as name columns only in another; the synthetic map must be global.
+- **The approval queue is the harder bottleneck.** 394 submissions await
+  approval; 18 approvers hold them, and **one holds 202 (51%)**. Casework load
+  concentrates (top worker 29% of open tasks); approval load concentrates twice
+  as hard. Adding caseworker capacity does not drain it.
+- **`Performed By` is a real performer column** — unlike `Worker`. It appears on
+  Awaiting Approval and Rejected. Still per-item attribution, still not caseload.
+- **Not every export is Excel.** Compliance Tracking and Reports Completed by
+  Date arrive as CSV, and the Compliance CSV is Windows-1252, not UTF-8. The
+  reader handles both; the audit's "Excel only" holds for report views only.
+- **Compliance Tracking is a matrix** — 52 cases × 76 obligation columns, not a
+  row per task. Parsed by `MatrixReportSpec`, deliberately **not** loaded into
+  the dashboard: it would quadruple every headline number. Exec decision first.
 
 ## Commands
 
@@ -61,6 +87,7 @@ wrong.** This was requested explicitly. Concretely:
 npm run dev                                # mock data
 npm run export:er                          # pull reports from ExtendedReach
 npm run inspect:export -- ./data/exports   # reconcile columns; masked output
+                                           # reads .xlsx and .csv
 npm run deidentify -- ./real --out ./data/exports   # all files in ONE run
 DATA_SOURCE=exports npm run dev            # real (or de-identified) data
 npm run build && npx tsc --noEmit          # before any push
@@ -70,7 +97,13 @@ npm run build && npx tsc --noEmit          # before any push
 
 - Authentication is stubbed. Production needs a real IdP and a HIPAA-eligible
   host — Netlify and Vercel default tiers are neither.
-- Column mappings verified for `pastdue_case` only; the other nine reports
-  still need a real export run through `inspect:export`.
+- Column mappings verified for five reports: `pastdue_case`,
+  `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`.
+  Still unverified — no export seen yet: `opencases`, `pastdue_home`,
+  `inprocess`, `completions`, `caseload`, `ontime`, `openbeds`, `nextcourt`,
+  `staffexp`.
+- `needapproval_case`, `rejected_case`, `reportscompleted` and
+  `compliance_case` parse but are **not wired into the dataset** — only
+  `pastdue_case`, `pastdue_home`, `inprocess`, `opencases` and `caseload` are.
 - Ask the vendor for a Case ID column. Names are the only join key today, and
   the data contains sibling groups.

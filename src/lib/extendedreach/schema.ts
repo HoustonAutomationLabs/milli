@@ -39,20 +39,86 @@ export interface ReportSpec {
    * which `inspect-export` reports as a mismatch rather than an empty result.
    */
   required: string[];
+
+  /**
+   * How each field must be treated when producing a shareable copy.
+   *
+   * Getting this wrong is the difference between a safe demo file and one
+   * carrying a child's social security number, so it is declared per report
+   * rather than inferred from a field name. Anything not listed is copied
+   * through unchanged.
+   */
+  sensitivity?: {
+    /** Person names — replaced with a consistent synthetic person. */
+    names?: string[];
+    /**
+     * Direct identifiers (SSN, Medicaid #, case numbers). Replaced with a
+     * synthetic value of the same shape, consistently, so joins still work
+     * and column formats still look right.
+     */
+    identifiers?: string[];
+    /**
+     * Dates of birth. Shifted by a per-person offset rather than blanked, so
+     * age distributions survive while the exact date does not.
+     */
+    birthDates?: string[];
+    /** Free text that may mention a person. Scrubbed against known names. */
+    freeText?: string[];
+  };
+
+  /**
+   * Set when the export is a cross-tab rather than one row per record, and
+   * needs a bespoke reader. `caseload` is worker × month.
+   */
+  matrix?: boolean;
 }
 
 export const REPORT_SPECS: Record<string, ReportSpec> = {
+  /**
+   * The widest and by far the most sensitive export in the set: alongside the
+   * roster it carries DOB for every child, and SSN, Medicaid # and Customer #
+   * for most of them. Treat the raw file accordingly.
+   *
+   * It also carries `Case #`, populated for every row — the stable identifier
+   * the audit concluded did not exist anywhere. It does, here, and it is a
+   * better join key than a name.
+   *
+   * Note `Current Placement` holds the foster parents' names, not a category;
+   * the category lives in the separate `Placement Type` column.
+   */
   opencases: {
     slug: "opencases",
     label: "Foster Care Open Cases",
     view: "V_CLIENTS_LASTNAME_ACTIVE-C",
     required: ["client", "worker"],
     fields: {
-      client: ["client", "name", "child", "case name", "client name", "last name"],
-      worker: ["case manager", "worker", "caseworker", "primary worker", "assigned worker"],
-      placementType: ["placement type", "placement", "current placement", "home type"],
-      openedOn: ["admission", "admission date", "opened", "opened on", "start date", "date admitted"],
+      client: ["client name", "client", "name", "child", "case name", "last name"],
+      caseNumber: ["case #", "case number", "case no"],
+      worker: ["caseworker", "case manager", "worker", "primary worker", "assigned worker"],
+      placementType: ["placement type", "home type"],
+      currentPlacement: ["current placement"],
+      placements: ["# placements", "placements"],
+      openedOn: ["admission", "admission date", "opened", "opened on", "date admitted"],
+      removalDate: ["removal date"],
       program: ["program", "category"],
+      status: ["status"],
+      level: ["level", "rate level"],
+      goal: ["perm. plan goal", "perm plan goal", "goal"],
+      fundingOrg: ["funding org.", "funding org", "funding organization"],
+      lastPhysical: ["last physical"],
+      lastDental: ["last dental"],
+      gender: ["gender"],
+      race: ["race"],
+      dob: ["dob", "date of birth", "birth date"],
+      ssn: ["ssn", "social security", "social security number"],
+      medicaid: ["medicaid #", "medicaid", "medicaid number"],
+      stateId: ["state id/dl #", "state id", "dl #"],
+      customerNumber: ["customer #", "customer number"],
+    },
+    sensitivity: {
+      names: ["client", "worker", "currentPlacement"],
+      identifiers: ["caseNumber", "ssn", "medicaid", "stateId", "customerNumber"],
+      birthDates: ["dob"],
     },
   },
 
@@ -68,11 +134,12 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       // labels the report groups by on screen.
       status: ["status", "state"],
       type: ["type", "task", "task type", "obligation", "report type"],
-      worker: ["worker", "case manager", "caseworker", "assigned to", "performer"],
+      worker: ["worker", "case manager", "caseworker", "assigned to", "performer", "performed by"],
       client: ["client", "name", "child", "case name", "client name"],
       program: ["program"],
       description: ["description", "notes", "detail"],
     },
+    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
   },
 
   pastdue_home: {
@@ -88,6 +155,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       home: ["home", "household", "home name", "provider", "name"],
       description: ["description", "notes", "detail"],
     },
+    sensitivity: { names: ["home", "worker"], freeText: ["description"] },
   },
 
   inprocess: {
@@ -103,6 +171,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       client: ["client", "name", "child", "case name"],
       description: ["description", "notes"],
     },
+    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
   },
 
   completions: {
@@ -118,43 +187,89 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       program: ["program"],
       description: ["description", "notes"],
     },
+    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
   },
 
+  /**
+   * A cross-tab, not a row per record. The exported shape is:
+   *
+   *   [year] | [worker] | [program] | Name | Jan | Feb | … | Dec
+   *
+   * with the first three columns unlabelled and one row per
+   * (year, worker, client). The month cells are 0/1 flags for whether that
+   * child was on that worker's caseload in that month — so a worker's caseload
+   * for a month is the sum down its column, not a value to read off.
+   *
+   * `matrix: true` routes it to a bespoke reader; the generic field/alias
+   * matching cannot express this.
+   */
   caseload: {
     slug: "caseload",
     label: "Monthly Census by Worker",
     view: "V_CASELOADS_WKR_MONTH-C",
-    required: ["worker"],
+    matrix: true,
+    required: ["client"],
     fields: {
-      worker: ["worker", "case manager", "caseworker"],
-      month: ["month", "period", "month/year"],
-      activeCases: ["active cases", "cases", "count", "caseload", "total"],
+      client: ["name"],
     },
+    sensitivity: { names: ["client"] },
   },
 
+  /**
+   * Despite the menu label, this is not a monthly rollup — it is one row per
+   * completed item with its days-variance against the due date. The exported
+   * shape is:
+   *
+   *   Avg Days Var. | [year] | [worker] | [type] | Date | Name
+   *
+   * with columns 1–3 unlabelled. That is more useful than a rollup: the
+   * on-time percentage is derived as the share of rows with variance <= 0, so
+   * it can be cut by month, worker or task type rather than read as a single
+   * agency figure.
+   */
   ontime: {
     slug: "ontime",
-    label: "% On Time by Program",
+    label: "% On Time (per-item variance)",
     view: "V_MONTHVAR-C",
-    required: ["month"],
+    required: ["variance", "date"],
     fields: {
-      month: ["month", "period", "month/year"],
-      program: ["program"],
-      onTimePct: ["% on time", "on time", "percent on time", "on-time %", "pct on time"],
-      avgVariance: ["avg days variance", "variance", "average variance", "avg variance"],
+      variance: ["avg days var.", "avg days var", "days variance", "variance"],
+      date: ["date"],
+      client: ["name", "client"],
     },
+    sensitivity: { names: ["client"] },
   },
 
+  /**
+   * Carries more personal data than its name suggests: the foster home's street
+   * address and phone number, and an `Active Placements` column listing the
+   * children currently placed there **by name, gender and age**. All three are
+   * declared sensitive; the placements column is scrubbed as free text so the
+   * child names inside it are replaced along with everywhere else they appear.
+   */
   openbeds: {
     slug: "openbeds",
     label: "Available Homes — Open Beds",
     view: "V_HOMES_AVAILABLE-C",
     required: ["home"],
     fields: {
-      home: ["home", "household", "home name", "provider", "name"],
-      licenseType: ["license type", "license", "type"],
-      bedsAvailable: ["available beds", "open beds", "beds", "capacity"],
-      lastPlacement: ["last placement", "last placement date"],
+      home: ["name", "home", "household", "home name", "provider"],
+      licenseType: ["provider type", "license type", "license"],
+      worker: ["worker"],
+      address: ["address"],
+      phone: ["phone"],
+      lastPlacement: ["last placement (in or out)", "last placement", "last placement date"],
+      bedsAvailable: ["available", "available beds", "open beds", "beds", "capacity"],
+      gender: ["gender"],
+      ageRange: ["age range"],
+      races: ["race(s)", "races", "race"],
+      activePlacements: ["active placements"],
+      comments: ["placement comments", "comments"],
+    },
+    sensitivity: {
+      names: ["home", "worker"],
+      identifiers: ["address", "phone"],
+      freeText: ["activePlacements", "comments"],
     },
   },
 
@@ -164,10 +279,17 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     view: "V_CLIENTS_NEXTCOURT-C",
     required: ["client"],
     fields: {
-      client: ["client", "name", "child", "case name"],
+      client: ["client", "client name", "name", "child", "case name"],
       courtDate: ["next court date", "court date", "date"],
       judge: ["judge"],
+      placement: ["current placement"],
+      worker: ["caseworker", "case manager", "worker"],
+      program: ["program"],
       description: ["court description", "description", "notes"],
+    },
+    sensitivity: {
+      names: ["client", "placement", "worker"],
+      freeText: ["description"],
     },
   },
 
@@ -175,11 +297,99 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     slug: "staffexp",
     label: "Staff Events + Expirations by Date",
     view: "V_STAFF_EXPBYDATE-C",
-    required: ["expiresOn"],
+    required: ["expiresOn", "staff"],
     fields: {
       expiresOn: ["date", "expires", "expiration", "expiration date", "expires on"],
-      staff: ["staff", "name", "employee", "worker"],
-      requirement: ["event", "requirement", "type", "item"],
+      staff: ["name", "staff", "employee", "worker"],
+      requirement: ["title", "event", "requirement", "type", "item"],
+    },
+    sensitivity: { names: ["staff"] },
+  },
+
+  // -- Verified against real exports, 2026-08-22 -----------------------------
+
+  /**
+   * The supervisor approval queue. Every row is Status=Submitted by
+   * definition, so this report does not measure caseworker backlog — it
+   * measures how much finished work is waiting on an approver.
+   *
+   * This is the other half of the Submitted finding in `pastdue_case`: 165 of
+   * the 997 past-due case tasks are Submitted, and this report is where all
+   * such items live, past due or not.
+   */
+  needapproval_case: {
+    slug: "needapproval_case",
+    label: "Case Tasks — Awaiting Approval",
+    view: "V_REPORTS_NEEDAPPROVAL-C",
+    required: ["submittedOn", "type"],
+    fields: {
+      submittedOn: ["date", "submitted", "submitted on"],
+      status: ["status", "state"],
+      type: ["type", "task", "task type", "report type"],
+      // "Performed By" is who did the work. Unlike the `Worker` column on the
+      // task reports — which records who *entered* an item — this one does
+      // name the performer. It is still not a caseload figure.
+      worker: ["performed by", "performer", "worker", "case manager"],
+      // The approver the item is sitting with. This is the queue that matters
+      // here: approval load concentrates far harder than casework load does.
+      approver: ["submit to", "submitted to", "approver", "supervisor"],
+      client: ["client", "name", "child", "case name", "client name"],
+      description: ["description", "notes", "detail"],
+      program: ["program"],
+    },
+  },
+
+  /**
+   * Rejected submissions — work that was done, submitted, and sent back.
+   * Small in volume but the highest-signal rows in the system: each one is a
+   * documented rework loop, and `Reason Rejected` says why.
+   *
+   * Note the date column is labelled "Rejected", not "Date".
+   */
+  rejected_case: {
+    slug: "rejected_case",
+    label: "Case Tasks — Rejected",
+    view: "V_TASKS_REJECTED-C",
+    required: ["rejectedOn", "type"],
+    fields: {
+      rejectedOn: ["rejected", "date", "rejected on"],
+      status: ["status", "state"],
+      type: ["type", "task", "task type", "report type"],
+      worker: ["performed by", "performer", "worker", "case manager"],
+      approver: ["submit to", "submitted to", "approver", "supervisor"],
+      client: ["client", "name", "child", "case name", "client name"],
+      reason: ["reason rejected", "reason", "rejection reason"],
+      description: ["description", "notes", "detail"],
+      program: ["program"],
+    },
+  },
+
+  /**
+   * Completed case *reports*. Distinct from `completions`, which is the
+   * Activities view (`V_ALLBYCOMPLETION_ACTIVITIES-C`) and covers a different
+   * 9,564-row population; this one is the 16,244-row Reports population.
+   *
+   * The export carries three unlabelled leading columns — year, month and
+   * record type — before the real header cells, which is why the header row
+   * is located by scoring rather than assumed. Its subject column is headed
+   * "Name", not "Client".
+   *
+   * Its `Worker` column is the entered-by column, with the concentration that
+   * implies: 145 rows across 41 subjects but only 9 workers. Never label it
+   * caseload. See docs/extendedreach-audit.md.
+   */
+  reportscompleted: {
+    slug: "reportscompleted",
+    label: "Reports Completed by Date",
+    view: "V_ALLBYCOMPLETION_REPORTS-C",
+    required: ["date", "type"],
+    fields: {
+      date: ["date", "completed", "completion date"],
+      type: ["type", "report type", "activity"],
+      client: ["name", "client", "child", "case name"],
+      worker: ["worker", "entered by", "performed by", "performer"],
+      description: ["description", "notes"],
+      program: ["program"],
     },
   },
 };
@@ -233,4 +443,177 @@ export function findHeaderRow(
   }
 
   return best ? { header: best.header, columns: best.columns, missing: best.missing } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Matrix reports
+// ---------------------------------------------------------------------------
+
+/**
+ * The Compliance Tracking custom reports are a different shape from every
+ * other export, and the `ReportSpec` model above cannot describe them.
+ *
+ * A list report is one row per obligation. A matrix report is one row per
+ * *subject* and one column per obligation type — 52 cases wide by 76
+ * compliance items in the real export, every cell filled. The obligation
+ * names are data, not schema: they come from the agency's Configurator and
+ * change when it does, so they cannot be enumerated here as aliases.
+ *
+ * The spec therefore pins only the leading identity columns and treats
+ * everything to their right as obligations to be unpivoted.
+ */
+export interface MatrixReportSpec {
+  slug: string;
+  label: string;
+  view: string;
+  /** Leading columns that identify the subject of the row. */
+  idFields: FieldAliases;
+  /** Identity fields without which a row cannot be attributed. */
+  required: string[];
+}
+
+export const MATRIX_SPECS: Record<string, MatrixReportSpec> = {
+  compliance_case: {
+    slug: "compliance_case",
+    label: "Case Tasks — Compliance Tracking",
+    view: "A_COMPLIANCE_CASES",
+    required: ["client"],
+    idFields: {
+      client: ["case", "client", "name", "child", "case name"],
+      worker: ["case manager", "worker", "caseworker"],
+      secondaryWorker: ["sec. worker", "secondary worker", "sec worker"],
+      placement: ["current placement", "placement", "home"],
+    },
+  },
+};
+
+/** Resolved layout of a matrix report: identity columns plus obligation columns. */
+export interface MatrixLayout {
+  header: number;
+  /** Column index per identity field. */
+  id: Record<string, number>;
+  /** Obligation columns, in file order. */
+  items: { label: string; col: number }[];
+}
+
+/**
+ * Locate the header row of a matrix report and split it into identity columns
+ * and obligation columns.
+ *
+ * Obligation headers cannot be validated against a list — any column to the
+ * right of the last identity column that carries a label is one. That is
+ * permissive by necessity, so the identity block is what anchors the match:
+ * if the required identity fields do not resolve, the row is not the header.
+ */
+export function findMatrixHeader(
+  spec: MatrixReportSpec,
+  grid: string[][],
+  scanRows = 12,
+): MatrixLayout | null {
+  for (let r = 0; r < Math.min(grid.length, scanRows); r++) {
+    const row = grid[r] ?? [];
+    const seen = row.map(normaliseHeader);
+
+    const id: Record<string, number> = {};
+    const claimed = new Set<number>();
+    for (const [field, aliases] of Object.entries(spec.idFields)) {
+      const idx = seen.findIndex((h, i) => h && !claimed.has(i) && aliases.includes(h));
+      if (idx >= 0) {
+        id[field] = idx;
+        claimed.add(idx);
+      }
+    }
+    if (!spec.required.every((f) => f in id)) continue;
+
+    // Obligations start after the last identity column so that an unmatched
+    // identity column (say a "Sec. Worker" the spec has not seen) is not
+    // mistaken for a compliance item.
+    const lastId = Math.max(...Object.values(id));
+    const items: { label: string; col: number }[] = [];
+    for (let c = lastId + 1; c < row.length; c++) {
+      const label = (row[c] ?? "").trim();
+      if (label) items.push({ label, col: c });
+    }
+    if (!items.length) continue;
+
+    return { header: r, id, items };
+  }
+  return null;
+}
+
+/**
+ * The state of one compliance cell.
+ *
+ * Aligns with `ComplianceState` in the dashboard's types, plus
+ * `not_applicable` — a matrix cell can say an obligation does not apply to
+ * this case, which no list report ever needs to express.
+ */
+export type MatrixCellState = "ok" | "due_soon" | "overdue" | "not_applicable";
+
+export interface MatrixCell {
+  /** ISO date carried by the cell, when it has one. */
+  date: string | null;
+  /** ExtendedReach's own parenthetical flag, verbatim, when present. */
+  marker: string | null;
+  state: MatrixCellState;
+}
+
+/**
+ * Read one compliance cell.
+ *
+ * The full vocabulary, counted across all 3,952 cells of the real export:
+ * a bare date (2,209), `Optional` (637), `<date> (Due)` (389), `Missing`
+ * (283), `<date> (Overdue)` (264), `<date> (Expires)` (104), `<date>
+ * (Expired)` (27), `<date> (In Proc.)` (21), `<date> (Submitted)` (16),
+ * `<date> (Sched.)` (2). There were no blanks.
+ *
+ * The mapping follows the same rule the task loader applies in `stateFor`:
+ * work that has left the caseworker's hands is not their outstanding work.
+ * So `Submitted` is satisfied here exactly as it is there, and `Sched.` is a
+ * calendar entry rather than a date-driven obligation.
+ *
+ * `Missing` is the one judgement call. It carries no date, so it cannot be
+ * aged, but it means a required document has never been provided — a real
+ * compliance gap, not an unknown. It counts as overdue, and because it has no
+ * date it will never appear in an age bucket; that is the honest
+ * representation rather than dropping it or inventing a date.
+ */
+export function parseMatrixCell(raw: string): MatrixCell {
+  const value = (raw ?? "").trim();
+  if (!value) return { date: null, marker: null, state: "not_applicable" };
+
+  if (/^optional$/i.test(value)) return { date: null, marker: "Optional", state: "not_applicable" };
+  if (/^missing$/i.test(value)) return { date: null, marker: "Missing", state: "overdue" };
+
+  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s*\(([^)]*)\))?$/);
+  if (!m) {
+    // An unrecognised cell is reported as unknown rather than guessed at. If
+    // this ever fires, add the new form here rather than letting it fall into
+    // a category it may not belong to.
+    return { date: null, marker: value, state: "not_applicable" };
+  }
+
+  const [, mo, d, y, flag] = m;
+  const date = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  const marker = flag?.trim() || null;
+
+  switch ((marker ?? "").toLowerCase()) {
+    case "overdue":
+    case "expired":
+      return { date, marker, state: "overdue" };
+    case "due":
+    case "expires":
+    case "in proc.":
+    case "in proc":
+      return { date, marker, state: "due_soon" };
+    case "submitted":
+    case "sched.":
+    case "sched":
+      return { date, marker, state: "ok" };
+    case "":
+      // A bare date is the date the item was completed.
+      return { date, marker: null, state: "ok" };
+    default:
+      return { date, marker, state: "not_applicable" };
+  }
 }

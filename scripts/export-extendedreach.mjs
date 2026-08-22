@@ -63,6 +63,14 @@ const REPORTS = [
   { slug: "openbeds",      view: "V_HOMES_AVAILABLE-C",                 menuPath: ["Homes", "Home Rosters", "Open Beds"] },
   { slug: "nextcourt",     view: "V_CLIENTS_NEXTCOURT-C",               menuPath: ["Cases", "Case Rosters", "Next Court Date"] },
   { slug: "staffexp",      view: "V_STAFF_EXPBYDATE-C",                 menuPath: ["Summaries", "Staff", "Events + Expirations"] },
+  // Verified against real exports 2026-08-22; see src/lib/extendedreach/schema.ts.
+  { slug: "needapproval_case", view: "V_REPORTS_NEEDAPPROVAL-C",        menuPath: ["Cases", "Case Tasks", "Awaiting Approval"] },
+  { slug: "rejected_case",     view: "V_TASKS_REJECTED-C",              menuPath: ["Cases", "Case Tasks", "Rejected"] },
+  { slug: "reportscompleted",  view: "V_ALLBYCOMPLETION_REPORTS-C",     menuPath: ["Summaries", "Casework", "Reports Completed by Date"] },
+  // A custom report, not a view: it has no view code and is reached by name.
+  // It also downloads as CSV rather than Excel, which `downloadReport` must
+  // allow for — see the extension note there.
+  { slug: "compliance_case",   view: "A_COMPLIANCE_CASES",              menuPath: ["Cases", "Case Tasks", "Compliance Tracking"] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -157,7 +165,13 @@ async function exportReport(page, report, outDir) {
     excel.click(),
   ]);
 
-  const dest = path.join(outDir, `${report.slug}_${stamp()}.xlsx`);
+  // Do not assume the extension. The report views export Excel, but the
+  // Compliance Tracking custom reports download as CSV even though the control
+  // is still labelled "Excel". Naming a CSV `.xlsx` would make the loader hand
+  // it to the workbook parser, which fails with no useful message.
+  const suggested = download.suggestedFilename() ?? "";
+  const ext = /\.(xlsx|csv)$/i.exec(suggested)?.[1].toLowerCase() ?? "xlsx";
+  const dest = path.join(outDir, `${report.slug}_${stamp()}.${ext}`);
   await download.saveAs(dest);
   return dest;
 }
