@@ -23,17 +23,21 @@
  * output you intend to share.
  */
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import ExcelJS from "exceljs";
 
+import { isReadableExport, readGrid } from "../src/lib/extendedreach/grid";
 import {
+  MATRIX_SPECS,
   REPORT_SPECS,
   findHeaderRow,
+  findMatrixHeader,
   normaliseHeader,
+  parseMatrixCell,
   resolveColumns,
+  type MatrixReportSpec,
   type ReportSpec,
 } from "../src/lib/extendedreach/schema";
 
@@ -145,35 +149,98 @@ function looksLikeLabels(row: string[]): boolean {
   return labelish.length / cells.length >= 0.8;
 }
 
-async function readGrid(file: string): Promise<string[][]> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(await readFile(file));
-  const ws = wb.worksheets[0];
-  if (!ws) return [];
-  const grid: string[][] = [];
-  ws.eachRow({ includeEmpty: false }, (row) => {
-    const cells: string[] = [];
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      const v = cell.value;
-      let s = "";
-      if (v == null) s = "";
-      else if (v instanceof Date) s = v.toISOString().slice(0, 10);
-      else if (typeof v === "object" && "text" in v) s = String((v as { text?: unknown }).text ?? "");
-      else if (typeof v === "object" && "result" in v) s = String((v as { result?: unknown }).result ?? "");
-      else s = String(v);
-      cells[col - 1] = s.trim();
-    });
-    grid.push(Array.from(cells, (c) => c ?? ""));
-  });
-  return grid;
+/** Does this filename identify itself as belonging to `slug`? */
+function matchesSlug(base: string, slug: string): boolean {
+  return base.startsWith(`${slug}_`) || base === `${slug}.xlsx` || base === `${slug}.csv`;
 }
 
-function specForFile(file: string): ReportSpec | null {
+function specForFile(file: string): ReportSpec | MatrixReportSpec | null {
   const forced = opt("slug");
-  if (forced) return REPORT_SPECS[forced] ?? null;
+  if (forced) return REPORT_SPECS[forced] ?? MATRIX_SPECS[forced] ?? null;
   const base = path.basename(file);
-  const hit = Object.values(REPORT_SPECS).find((s) => base.startsWith(`${s.slug}_`) || base === `${s.slug}.xlsx`);
-  return hit ?? null;
+  return (
+    Object.values(REPORT_SPECS).find((s) => matchesSlug(base, s.slug)) ??
+    Object.values(MATRIX_SPECS).find((s) => matchesSlug(base, s.slug)) ??
+    null
+  );
+}
+
+/** Matrix specs carry `idFields`; list specs carry `fields`. */
+function isMatrix(spec: ReportSpec | MatrixReportSpec): spec is MatrixReportSpec {
+  return "idFields" in spec;
+}
+
+/**
+ * Reconcile a matrix report.
+ *
+ * There is no fixed column list to check off, so "did this resolve" means
+ * something different here: the identity block must resolve, every cell must
+ * parse into a known form, and the obligation columns are reported as a count
+ * plus a sample. An unparsed cell is the failure mode that matters — it means
+ * ExtendedReach has a status word the loader would silently miscategorise.
+ */
+function inspectMatrix(spec: MatrixReportSpec, grid: string[][]): boolean {
+  const layout = findMatrixHeader(spec, grid);
+  if (!layout) {
+    console.log("\n" + C.red("  ✖ MISMATCH — no header row resolves the identity columns."));
+    console.log(C.dim(`    Required: ${spec.required.join(", ")}`));
+    console.log(C.dim(`    Known aliases: ${JSON.stringify(spec.idFields)}`));
+    return false;
+  }
+
+  console.log(C.dim(`  header row ${layout.header}`));
+  console.log("\n" + C.bold("  Identity columns"));
+  for (const [field, col] of Object.entries(layout.id)) {
+    console.log(`    ${C.green("✓")} ${field.padEnd(18)} col ${String(col).padStart(2)}  ${C.cyan(grid[layout.header][col])}`);
+  }
+  const unresolved = Object.keys(spec.idFields).filter((f) => !(f in layout.id));
+  for (const f of unresolved) console.log(`    ${C.yellow("·")} ${f.padEnd(18)} ${C.dim("not present")}`);
+
+  // Obligation labels are Configurator item names — metadata, not PHI.
+  console.log("\n" + C.bold(`  Obligation columns: ${layout.items.length}`));
+  console.log(C.dim(`    ${layout.items.slice(0, 8).map((i) => i.label).join(" | ")}${layout.items.length > 8 ? " | …" : ""}`));
+
+  // Cell vocabulary. Dates are reduced to <date> so nothing identifies a case.
+  const states = new Map<string, number>();
+  const unknown = new Map<string, number>();
+  let rows = 0;
+  for (let r = layout.header + 1; r < grid.length; r++) {
+    const row = grid[r] ?? [];
+    if (row.every((c) => !c)) continue;
+    if (spec.required.every((f) => !row[layout.id[f]])) continue;
+    rows++;
+    for (const item of layout.items) {
+      const raw = row[item.col] ?? "";
+      const cell = parseMatrixCell(raw);
+      const shape = raw.trim()
+        ? raw.trim().replace(/\d{1,2}\/\d{1,2}\/\d{4}/, "<date>")
+        : "(blank)";
+      states.set(`${cell.state}`, (states.get(`${cell.state}`) ?? 0) + 1);
+      // A dated cell with an unrecognised flag, or an undated non-keyword,
+      // is a form the parser does not know.
+      if (!cell.date && cell.marker && !/^(optional|missing)$/i.test(cell.marker)) {
+        unknown.set(shape, (unknown.get(shape) ?? 0) + 1);
+      } else if (cell.date && cell.state === "not_applicable") {
+        unknown.set(shape, (unknown.get(shape) ?? 0) + 1);
+      }
+    }
+  }
+
+  console.log("\n" + C.bold(`  Cells parsed: ${rows} rows × ${layout.items.length} obligations`));
+  for (const [state, n] of [...states.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`    ${state.padEnd(16)} ${String(n).padStart(5)}`);
+  }
+
+  if (unknown.size) {
+    console.log("\n" + C.red(`  ✖ ${unknown.size} unrecognised cell form(s) — add them to parseMatrixCell:`));
+    for (const [shape, n] of [...unknown.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+      console.log(`    ${C.yellow(shape)} ${C.dim(`× ${n}`)}`);
+    }
+    return false;
+  }
+
+  console.log("\n  " + C.bold("Would parse: ") + C.green(`${rows} rows`) + C.dim(" · every cell recognised"));
+  return rows > 0;
 }
 
 async function inspect(file: string): Promise<boolean> {
@@ -185,17 +252,21 @@ async function inspect(file: string): Promise<boolean> {
   if (!spec) {
     console.log(C.red("  ✖ No matching report spec."));
     console.log(C.dim(`    Filename must start with a known slug, or pass --slug <name>.`));
-    console.log(C.dim(`    Known: ${Object.keys(REPORT_SPECS).join(", ")}`));
+    console.log(
+      C.dim(`    Known: ${[...Object.keys(REPORT_SPECS), ...Object.keys(MATRIX_SPECS)].join(", ")}`),
+    );
     return false;
   }
   console.log(C.dim(`${spec.label}  ·  ${spec.view}  ·  slug: ${spec.slug}`));
 
   const grid = await readGrid(file);
   if (!grid.length) {
-    console.log(C.red("  ✖ Workbook is empty or unreadable."));
+    console.log(C.red("  ✖ File is empty or unreadable."));
     return false;
   }
   console.log(C.dim(`${grid.length} rows read`));
+
+  if (isMatrix(spec)) return inspectMatrix(spec, grid);
 
   const found = findHeaderRow(spec, grid);
 
@@ -323,7 +394,7 @@ async function inspect(file: string): Promise<boolean> {
 
 async function main() {
   if (!targets.length) {
-    console.log("Usage: npm run inspect:export -- <file.xlsx | directory> [--slug <name>] [--unmask]");
+    console.log("Usage: npm run inspect:export -- <file.xlsx|.csv | directory> [--slug <name>] [--unmask]");
     process.exit(1);
   }
   if (UNMASK) {
@@ -335,14 +406,14 @@ async function main() {
   for (const t of targets) {
     if (statSync(t).isDirectory()) {
       const entries = await readdir(t);
-      files.push(...entries.filter((f) => f.endsWith(".xlsx")).map((f) => path.join(t, f)));
+      files.push(...entries.filter(isReadableExport).map((f) => path.join(t, f)));
     } else {
       files.push(t);
     }
   }
 
   if (!files.length) {
-    console.log("No .xlsx files found.");
+    console.log("No .xlsx or .csv files found.");
     process.exit(1);
   }
 

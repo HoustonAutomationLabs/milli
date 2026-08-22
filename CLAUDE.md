@@ -54,6 +54,18 @@ wrong.** This was requested explicitly. Concretely:
   staff look delinquent for work they completed.
 - Verified real figures: 1,161 open tasks, 997 past due, 164 upcoming, 31% of
   past-due over a year old, ~35% on-time completion, 32 workers, 151 clients.
+- **The approval queue is the harder bottleneck.** 394 submissions await
+  approval; 18 approvers hold them, and **one holds 202 (51%)**. Casework load
+  concentrates (top worker 29% of open tasks); approval load concentrates twice
+  as hard. Adding caseworker capacity does not drain it.
+- **`Performed By` is a real performer column** — unlike `Worker`. It appears on
+  Awaiting Approval and Rejected. Still per-item attribution, still not caseload.
+- **Not every export is Excel.** Compliance Tracking and Reports Completed by
+  Date arrive as CSV, and the Compliance CSV is Windows-1252, not UTF-8. The
+  reader handles both; the audit's "Excel only" holds for report views only.
+- **Compliance Tracking is a matrix** — 52 cases × 76 obligation columns, not a
+  row per task. Parsed by `MatrixReportSpec`, deliberately **not** loaded into
+  the dashboard: it would quadruple every headline number. Exec decision first.
 
 ## Commands
 
@@ -61,6 +73,7 @@ wrong.** This was requested explicitly. Concretely:
 npm run dev                                # mock data
 npm run export:er                          # pull reports from ExtendedReach
 npm run inspect:export -- ./data/exports   # reconcile columns; masked output
+                                           # reads .xlsx and .csv
 npm run deidentify -- ./real --out ./data/exports   # all files in ONE run
 DATA_SOURCE=exports npm run dev            # real (or de-identified) data
 npm run build && npx tsc --noEmit          # before any push
@@ -70,7 +83,13 @@ npm run build && npx tsc --noEmit          # before any push
 
 - Authentication is stubbed. Production needs a real IdP and a HIPAA-eligible
   host — Netlify and Vercel default tiers are neither.
-- Column mappings verified for `pastdue_case` only; the other nine reports
-  still need a real export run through `inspect:export`.
+- Column mappings verified for five reports: `pastdue_case`,
+  `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`.
+  Still unverified — no export seen yet: `opencases`, `pastdue_home`,
+  `inprocess`, `completions`, `caseload`, `ontime`, `openbeds`, `nextcourt`,
+  `staffexp`.
+- `needapproval_case`, `rejected_case`, `reportscompleted` and
+  `compliance_case` parse but are **not wired into the dataset** — only
+  `pastdue_case`, `pastdue_home`, `inprocess`, `opencases` and `caseload` are.
 - Ask the vendor for a Case ID column. Names are the only join key today, and
   the data contains sibling groups.

@@ -20,9 +20,8 @@
  *   surfaced.
  */
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
-import ExcelJS from "exceljs";
 
 import type {
   CaseRecord,
@@ -34,10 +33,8 @@ import type {
   TrendPoint,
 } from "../zoho/types";
 import { caseDisplayId, homeDisplayId, normaliseName, workerId } from "./identity";
+import { isReadableExport, readGrid, type Grid } from "./grid";
 import { REPORT_SPECS, findHeaderRow, type ReportSpec } from "./schema";
-
-/** Rows of a sheet as trimmed strings, header row included. */
-type Grid = string[][];
 
 // ---------------------------------------------------------------------------
 // Workbook loading
@@ -46,6 +43,10 @@ type Grid = string[][];
 /**
  * Find the most recent export for a slug. Filenames carry a date suffix
  * (`pastdue_case_20260822.xlsx`), so lexical sort is chronological.
+ *
+ * Both `.xlsx` and `.csv` count: most report views export Excel only, but the
+ * Compliance Tracking and Reports Completed exports arrive as CSV. See
+ * `grid.ts`.
  */
 async function newestExport(dir: string, slug: string): Promise<string | null> {
   let entries: string[];
@@ -55,35 +56,10 @@ async function newestExport(dir: string, slug: string): Promise<string | null> {
     return null;
   }
   const matches = entries
-    .filter((f) => f.startsWith(`${slug}_`) && f.endsWith(".xlsx"))
+    .filter((f) => f.startsWith(`${slug}_`) && isReadableExport(f))
     .sort();
   const latest = matches[matches.length - 1];
   return latest ? path.join(dir, latest) : null;
-}
-
-/** Read the first worksheet of a workbook into a grid of trimmed strings. */
-async function readGrid(file: string): Promise<Grid> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(await readFile(file));
-  const ws = wb.worksheets[0];
-  if (!ws) return [];
-
-  const grid: Grid = [];
-  ws.eachRow({ includeEmpty: false }, (row) => {
-    const cells: string[] = [];
-    row.eachCell({ includeEmpty: true }, (cell, col) => {
-      const v = cell.value;
-      let s = "";
-      if (v == null) s = "";
-      else if (v instanceof Date) s = v.toISOString().slice(0, 10);
-      else if (typeof v === "object" && "text" in v) s = String(v.text ?? "");
-      else if (typeof v === "object" && "result" in v) s = String(v.result ?? "");
-      else s = String(v);
-      cells[col - 1] = s.trim();
-    });
-    grid.push(Array.from(cells, (c) => c ?? ""));
-  });
-  return grid;
 }
 
 /**
