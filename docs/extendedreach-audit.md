@@ -247,6 +247,81 @@ exec team, not a silent side effect of adding a parser.
 
 ---
 
+## Five more exports verified
+
+`opencases`, `pastdue_home`, `inprocess`, `nextcourt` and `caseload` were
+exported and run through `inspect:export`. Three matched first time; two did
+not, and both were structural rather than a wording difference. Four findings
+changed the code.
+
+### 1. `Case #` exists after all
+
+The audit concluded no report exposes a stable identifier. **The open-cases
+roster carries `Case #`, populated for all 52 rows.** It is now the case id,
+replacing the hash-of-the-name fallback — it survives spelling drift and tells
+siblings apart, which name matching cannot. The request to the vendor for an id
+column can be dropped.
+
+### 2. That roster is the most sensitive file in the set
+
+29 columns, including **`DOB` for every child, `SSN` for 16, `Medicaid #` for
+44, and `Customer #` for 50**, alongside Race and Gender. The task reports
+carry nothing like this. Two consequences:
+
+- The raw file deserves more care than the others — it is a direct-identifier
+  set, not just a name list.
+- De-identification cannot be name-substitution alone. `schema.ts` now declares
+  sensitivity per field, and identifiers are replaced with same-shaped
+  synthetic values while dates of birth are shifted by a per-person offset of
+  up to ±180 days, which keeps 43 of 52 children in the same three-year age
+  band while making every exact date wrong.
+
+Also in that report: **`Current Placement` holds the foster parents' names**,
+not a placement category — 26 of 26 distinct values are person names. The
+category is in the separate `Placement Type` column. It is now treated as PII.
+
+### 3. `Due Soon/Past Due` and `In Process` are the same tasks
+
+**1,139 of 1,157 past-due obligations — 98.4% — also appear in In Process.**
+The former is a filtered view of the latter, not additional work. Ingesting
+both naively produced 3,534 obligations where there are 2,395; the loader now
+keys on subject + type + due date and skips repeats, reporting the count in
+`diagnostics.deduplicated`.
+
+This is the single largest correction so far. Left in place it would have
+inflated the reported backlog by roughly half.
+
+### 4. `caseload` is a cross-tab
+
+Not one row per record. The shape is:
+
+```
+[year] | [worker] | [program] | Name | Jan | Feb | … | Dec
+```
+
+with the first three columns unlabelled and one row per (year, worker, client).
+The month cells are 0/1 flags, so a worker's caseload for a month is a column
+sum, not a value to read. `matrix: true` routes it to a bespoke reader.
+
+It is also the only source of history in the export set, which finally gives
+the dashboard a real trend line: **active cases ran 54 → 64 → 56 across 2026**.
+
+### Where the numbers land
+
+Loading all six reports together:
+
+| | |
+|---|---|
+| Open cases | 52 |
+| Workers | 43 |
+| Distinct obligations | 2,766 (after removing 1,337 duplicates) |
+| Overdue | 1,556 |
+| — actionable (under a year) | **902** |
+| — abandoned (over a year) | 654 |
+| Due soon | 181 |
+
+---
+
 ## Report inventory — what feeds what
 
 The dashboard's five "spine" metrics all map to reports that already exist.
