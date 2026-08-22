@@ -64,8 +64,10 @@ wrong.** This was requested explicitly. Concretely:
   with 0/1 flags. Caseload for a month is a column sum. It is also the only
   source of trend history.
 - Verified real figures: 52 open cases, 43 workers, 2,766 distinct obligations,
-  1,556 overdue (902 actionable, 654 over a year), 181 due soon, ~35% on-time,
-  active caseload 54–64 across 2026.
+  1,556 overdue (902 actionable, 654 over a year), 181 due soon, 41.1% on-time
+  across 3,184 completed items, active caseload 54–64 across 2026.
+- **De-identify every report in ONE run.** Free text in one report names people
+  who appear as name columns only in another; the synthetic map must be global.
 - **The approval queue is the harder bottleneck.** 394 submissions await
   approval; 18 approvers hold them, and **one holds 202 (51%)**. Casework load
   concentrates (top worker 29% of open tasks); approval load concentrates twice

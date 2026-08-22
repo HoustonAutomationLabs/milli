@@ -29,6 +29,7 @@ import type {
   Caseworker,
   ComplianceItem,
   ComplianceState,
+  OnTimePoint,
   Team,
   TrendPoint,
 } from "../zoho/types";
@@ -253,12 +254,13 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
     diagnostics[slug] = { found: grid.length > 0, rows: rows.length };
   };
 
-  const [gOpen, gPastCase, gPastHome, gInproc, gCaseload] = await Promise.all([
+  const [gOpen, gPastCase, gPastHome, gInproc, gCaseload, gOnTime] = await Promise.all([
     gridFor(dir, "opencases"),
     gridFor(dir, "pastdue_case"),
     gridFor(dir, "pastdue_home"),
     gridFor(dir, "inprocess"),
     gridFor(dir, "caseload"),
+    gridFor(dir, "ontime"),
   ]);
 
   // --- caseworkers and teams ------------------------------------------------
@@ -392,8 +394,38 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, activeCases]) => ({ month, activeCases, intakes: 0, discharges: 0 }));
 
+  // --- on-time completion ---------------------------------------------------
+  // The variance export is one row per completed item, so the percentage is
+  // derived rather than read: an item is on time when it was finished on or
+  // before its due date (variance <= 0). Deriving it this way means it can be
+  // cut by month instead of arriving as a single agency-wide figure.
+  const onTimeRows = rowsFor(gOnTime, REPORT_SPECS.ontime);
+  note("ontime", gOnTime, onTimeRows);
+
+  const byMonth = new Map<string, { onTime: number; total: number; daysLate: number }>();
+  for (const r of onTimeRows) {
+    const iso = toIso(r.date ?? "");
+    const variance = Number.parseInt((r.variance ?? "").trim(), 10);
+    if (!iso || Number.isNaN(variance)) continue;
+    const month = iso.slice(0, 7);
+    const bucket = byMonth.get(month) ?? { onTime: 0, total: 0, daysLate: 0 };
+    bucket.total++;
+    if (variance <= 0) bucket.onTime++;
+    bucket.daysLate += variance;
+    byMonth.set(month, bucket);
+  }
+
+  const onTime: OnTimePoint[] = [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, b]) => ({
+      month,
+      onTimePct: Math.round((b.onTime / b.total) * 1000) / 10,
+      sample: b.total,
+      avgDaysLate: Math.round((b.daysLate / b.total) * 10) / 10,
+    }));
+
   return {
-    dataset: { teams, caseworkers, cases, compliance, trend },
+    dataset: { teams, caseworkers, cases, compliance, trend, onTime },
     diagnostics,
   };
 }

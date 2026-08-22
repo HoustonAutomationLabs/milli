@@ -215,29 +215,61 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     sensitivity: { names: ["client"] },
   },
 
+  /**
+   * Despite the menu label, this is not a monthly rollup — it is one row per
+   * completed item with its days-variance against the due date. The exported
+   * shape is:
+   *
+   *   Avg Days Var. | [year] | [worker] | [type] | Date | Name
+   *
+   * with columns 1–3 unlabelled. That is more useful than a rollup: the
+   * on-time percentage is derived as the share of rows with variance <= 0, so
+   * it can be cut by month, worker or task type rather than read as a single
+   * agency figure.
+   */
   ontime: {
     slug: "ontime",
-    label: "% On Time by Program",
+    label: "% On Time (per-item variance)",
     view: "V_MONTHVAR-C",
-    required: ["month"],
+    required: ["variance", "date"],
     fields: {
-      month: ["month", "period", "month/year"],
-      program: ["program"],
-      onTimePct: ["% on time", "on time", "percent on time", "on-time %", "pct on time"],
-      avgVariance: ["avg days variance", "variance", "average variance", "avg variance"],
+      variance: ["avg days var.", "avg days var", "days variance", "variance"],
+      date: ["date"],
+      client: ["name", "client"],
     },
+    sensitivity: { names: ["client"] },
   },
 
+  /**
+   * Carries more personal data than its name suggests: the foster home's street
+   * address and phone number, and an `Active Placements` column listing the
+   * children currently placed there **by name, gender and age**. All three are
+   * declared sensitive; the placements column is scrubbed as free text so the
+   * child names inside it are replaced along with everywhere else they appear.
+   */
   openbeds: {
     slug: "openbeds",
     label: "Available Homes — Open Beds",
     view: "V_HOMES_AVAILABLE-C",
     required: ["home"],
     fields: {
-      home: ["home", "household", "home name", "provider", "name"],
-      licenseType: ["license type", "license", "type"],
-      bedsAvailable: ["available beds", "open beds", "beds", "capacity"],
-      lastPlacement: ["last placement", "last placement date"],
+      home: ["name", "home", "household", "home name", "provider"],
+      licenseType: ["provider type", "license type", "license"],
+      worker: ["worker"],
+      address: ["address"],
+      phone: ["phone"],
+      lastPlacement: ["last placement (in or out)", "last placement", "last placement date"],
+      bedsAvailable: ["available", "available beds", "open beds", "beds", "capacity"],
+      gender: ["gender"],
+      ageRange: ["age range"],
+      races: ["race(s)", "races", "race"],
+      activePlacements: ["active placements"],
+      comments: ["placement comments", "comments"],
+    },
+    sensitivity: {
+      names: ["home", "worker"],
+      identifiers: ["address", "phone"],
+      freeText: ["activePlacements", "comments"],
     },
   },
 
@@ -265,12 +297,13 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     slug: "staffexp",
     label: "Staff Events + Expirations by Date",
     view: "V_STAFF_EXPBYDATE-C",
-    required: ["expiresOn"],
+    required: ["expiresOn", "staff"],
     fields: {
       expiresOn: ["date", "expires", "expiration", "expiration date", "expires on"],
-      staff: ["staff", "name", "employee", "worker"],
-      requirement: ["event", "requirement", "type", "item"],
+      staff: ["name", "staff", "employee", "worker"],
+      requirement: ["title", "event", "requirement", "type", "item"],
     },
+    sensitivity: { names: ["staff"] },
   },
 
   // -- Verified against real exports, 2026-08-22 -----------------------------

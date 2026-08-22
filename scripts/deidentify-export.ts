@@ -26,6 +26,12 @@
  * The mapping is derived from a hash of the real name, so it is stable across
  * runs and files without storing a lookup anywhere. It is one-way: the output
  * cannot be turned back into the original.
+ *
+ * One thing it deliberately does NOT do is scrub place names. Case notes refer
+ * to "Harris County" constantly, and a client surname of Leon-Harris does not
+ * make the county identifying. Verification against these exports flags such
+ * overlaps; they are false positives, and removing them would corrupt
+ * legitimate content for no privacy gain.
  */
 
 import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
@@ -109,6 +115,17 @@ const INITIALS = "ABCDEFGHIJKLMNPRSTVW".split("");
 let SURNAME_POOL: string[] = SURNAMES;
 let GIVEN_POOL: string[] = GIVEN;
 
+/**
+ * Real name → synthetic name for every person seen across the whole run.
+ *
+ * Free text is the reason this has to be global. A case note in one report
+ * routinely mentions a child who only appears as a name column in a different
+ * report — the open-beds "Active Placements" column lists the children placed
+ * in each home, none of whom are in that file's own name columns. Scrubbing
+ * against one file's map left those names in place.
+ */
+const GLOBAL_NAMES = new Map<string, string>();
+
 export function buildPools(realNames: Iterable<string>): { surnames: number; given: number } {
   const banned = new Set<string>();
   for (const n of realNames) {
@@ -126,6 +143,14 @@ export function buildPools(realNames: Iterable<string>): { surnames: number; giv
         `Add more entries to SURNAMES / GIVEN in scripts/deidentify-export.ts.`,
     );
   }
+  // Pools are final; now fix every person's synthetic identity once, so it is
+  // identical in every column of every file.
+  GLOBAL_NAMES.clear();
+  for (const n of realNames) {
+    const clean = n.trim();
+    if (clean && !GLOBAL_NAMES.has(clean)) GLOBAL_NAMES.set(clean, synthName(clean));
+  }
+
   return { surnames: SURNAME_POOL.length, given: GIVEN_POOL.length };
 }
 
@@ -358,15 +383,7 @@ async function deidentify(file: string, outDir: string) {
 
   // Pass 1 — build the full real→synthetic map so free text can be scrubbed
   // against every name that appears anywhere in the file.
-  const nameMap = new Map<string, string>();
-  for (let r = found.header + 1; r < grid.length; r++) {
-    for (const idx of piiCols.keys()) {
-      const real = (grid[r]?.[idx] ?? "").trim();
-      if (!real || /^(19|20)\d\d$/.test(real)) continue;
-      if (!nameMap.has(real)) nameMap.set(real, synthName(real));
-    }
-  }
-
+  const nameMap = GLOBAL_NAMES;
   assertUnique(nameMap, file);
 
   // Longest first, so "Smith, John Robert" is replaced before "Smith, John".
@@ -384,8 +401,15 @@ async function deidentify(file: string, outDir: string) {
         if (out.includes(flipped)) out = out.split(flipped).join(synthName(real));
       }
     }
-    // Backstop for any remaining "Surname, Given" shape not seen in a column.
-    return out.replace(/\b[A-Z][a-z]{2,},\s+[A-Z][a-z]{2,}\b/g, (m) => synthName(m));
+    // Backstops for people mentioned only in prose, who therefore appear in no
+    // name column anywhere and cannot be in the map: a "Surname, Given" shape,
+    // and the "Ms. Surname" form that case notes use constantly.
+    out = out.replace(/\b[A-Z][a-z]{2,},\s+[A-Z][a-z]{2,}\b/g, (m) => synthName(m));
+    out = out.replace(
+      /\b(Mr|Mrs|Ms|Miss|Dr)\.?\s+([A-Z][a-z]{2,})/g,
+      (_m, title: string, surname: string) => `${title}. ${synthName(surname).split(/[\s,]/)[0]}`,
+    );
+    return out;
   }
 
   // Pass 2 — rewrite cells in place, preserving everything else.
@@ -433,7 +457,7 @@ async function deidentify(file: string, outDir: string) {
   await wb.xlsx.writeFile(outFile);
 
   const bits = [
-    `${nameMap.size} people`,
+    `${piiCols.size ? nameMap.size : 0} people`,
     `${namesReplaced} name cells`,
     identsReplaced ? `${identsReplaced} identifiers` : null,
     datesShifted ? `${datesShifted} birth dates shifted` : null,
