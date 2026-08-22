@@ -55,6 +55,31 @@ Useful flags:
 Exit codes: `0` all reports exported · `2` one or more failed (check
 `manifest.json`) · `1` unexpected error. A scheduler should alert on non-zero.
 
+## Reconcile the columns — do this once, before trusting the data
+
+The column names the loader looks for came from reading ExtendedReach's screens
+during the audit. Exported header text does not always match the rendered
+label, and the only symptom of a mismatch is an empty dashboard.
+
+Check a real workbook before wiring anything up:
+
+```bash
+npm run inspect:export -- ./data/exports              # whole directory
+npm run inspect:export -- ./data/exports/pastdue_case_20260822.xlsx
+```
+
+For each report it prints which fields resolved to which header, which did not,
+what columns the file has that nothing claimed, and the exact alias line to add
+to `src/lib/extendedreach/schema.ts` when something is missing. Add the alias,
+re-run, repeat until it reports all reports ready. Exit code is `2` while any
+report still mismatches, so CI can gate on it.
+
+**The output is safe to share.** Names and free-text values are masked to their
+shape (`Xxxx, Xxxxx`); only column labels, dates and categorical values
+(status, type, program) print verbatim. There is an `--unmask` flag for local
+debugging that prints a warning — do not use it for anything you paste
+elsewhere.
+
 ## Consuming the output
 
 ```bash
