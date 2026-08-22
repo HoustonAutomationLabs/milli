@@ -52,8 +52,20 @@ wrong.** This was requested explicitly. Concretely:
 - **`Submitted` is not overdue.** 165 of 997 past-due items are finished work
   awaiting supervisor approval; counting them overstates the backlog and makes
   staff look delinquent for work they completed.
-- Verified real figures: 1,161 open tasks, 997 past due, 164 upcoming, 31% of
-  past-due over a year old, ~35% on-time completion, 32 workers, 151 clients.
+- **`Due Soon/Past Due` is a filtered view of `In Process`** — 98.4% overlap.
+  Ingesting both without deduping inflates the backlog by roughly half. The
+  loader keys on subject + type + due date.
+- **`Case #` exists** on the open-cases roster and is the case id. The older
+  note that no stable identifier exists is wrong.
+- **The open-cases roster carries DOB, SSN, Medicaid # and Customer #.** It is
+  the most sensitive export; `schema.ts` declares per-field sensitivity and the
+  de-identifier replaces identifiers and shifts birth dates.
+- **`caseload` is a cross-tab**, not rows: `[year|worker|program] Name Jan…Dec`
+  with 0/1 flags. Caseload for a month is a column sum. It is also the only
+  source of trend history.
+- Verified real figures: 52 open cases, 43 workers, 2,766 distinct obligations,
+  1,556 overdue (902 actionable, 654 over a year), 181 due soon, ~35% on-time,
+  active caseload 54–64 across 2026.
 - **The approval queue is the harder bottleneck.** 394 submissions await
   approval; 18 approvers hold them, and **one holds 202 (51%)**. Casework load
   concentrates (top worker 29% of open tasks); approval load concentrates twice

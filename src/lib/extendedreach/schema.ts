@@ -39,20 +39,86 @@ export interface ReportSpec {
    * which `inspect-export` reports as a mismatch rather than an empty result.
    */
   required: string[];
+
+  /**
+   * How each field must be treated when producing a shareable copy.
+   *
+   * Getting this wrong is the difference between a safe demo file and one
+   * carrying a child's social security number, so it is declared per report
+   * rather than inferred from a field name. Anything not listed is copied
+   * through unchanged.
+   */
+  sensitivity?: {
+    /** Person names — replaced with a consistent synthetic person. */
+    names?: string[];
+    /**
+     * Direct identifiers (SSN, Medicaid #, case numbers). Replaced with a
+     * synthetic value of the same shape, consistently, so joins still work
+     * and column formats still look right.
+     */
+    identifiers?: string[];
+    /**
+     * Dates of birth. Shifted by a per-person offset rather than blanked, so
+     * age distributions survive while the exact date does not.
+     */
+    birthDates?: string[];
+    /** Free text that may mention a person. Scrubbed against known names. */
+    freeText?: string[];
+  };
+
+  /**
+   * Set when the export is a cross-tab rather than one row per record, and
+   * needs a bespoke reader. `caseload` is worker × month.
+   */
+  matrix?: boolean;
 }
 
 export const REPORT_SPECS: Record<string, ReportSpec> = {
+  /**
+   * The widest and by far the most sensitive export in the set: alongside the
+   * roster it carries DOB for every child, and SSN, Medicaid # and Customer #
+   * for most of them. Treat the raw file accordingly.
+   *
+   * It also carries `Case #`, populated for every row — the stable identifier
+   * the audit concluded did not exist anywhere. It does, here, and it is a
+   * better join key than a name.
+   *
+   * Note `Current Placement` holds the foster parents' names, not a category;
+   * the category lives in the separate `Placement Type` column.
+   */
   opencases: {
     slug: "opencases",
     label: "Foster Care Open Cases",
     view: "V_CLIENTS_LASTNAME_ACTIVE-C",
     required: ["client", "worker"],
     fields: {
-      client: ["client", "name", "child", "case name", "client name", "last name"],
-      worker: ["case manager", "worker", "caseworker", "primary worker", "assigned worker"],
-      placementType: ["placement type", "placement", "current placement", "home type"],
-      openedOn: ["admission", "admission date", "opened", "opened on", "start date", "date admitted"],
+      client: ["client name", "client", "name", "child", "case name", "last name"],
+      caseNumber: ["case #", "case number", "case no"],
+      worker: ["caseworker", "case manager", "worker", "primary worker", "assigned worker"],
+      placementType: ["placement type", "home type"],
+      currentPlacement: ["current placement"],
+      placements: ["# placements", "placements"],
+      openedOn: ["admission", "admission date", "opened", "opened on", "date admitted"],
+      removalDate: ["removal date"],
       program: ["program", "category"],
+      status: ["status"],
+      level: ["level", "rate level"],
+      goal: ["perm. plan goal", "perm plan goal", "goal"],
+      fundingOrg: ["funding org.", "funding org", "funding organization"],
+      lastPhysical: ["last physical"],
+      lastDental: ["last dental"],
+      gender: ["gender"],
+      race: ["race"],
+      dob: ["dob", "date of birth", "birth date"],
+      ssn: ["ssn", "social security", "social security number"],
+      medicaid: ["medicaid #", "medicaid", "medicaid number"],
+      stateId: ["state id/dl #", "state id", "dl #"],
+      customerNumber: ["customer #", "customer number"],
+    },
+    sensitivity: {
+      names: ["client", "worker", "currentPlacement"],
+      identifiers: ["caseNumber", "ssn", "medicaid", "stateId", "customerNumber"],
+      birthDates: ["dob"],
     },
   },
 
@@ -73,6 +139,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       program: ["program"],
       description: ["description", "notes", "detail"],
     },
+    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
   },
 
   pastdue_home: {
@@ -88,6 +155,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       home: ["home", "household", "home name", "provider", "name"],
       description: ["description", "notes", "detail"],
     },
+    sensitivity: { names: ["home", "worker"], freeText: ["description"] },
   },
 
   inprocess: {
@@ -103,6 +171,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       client: ["client", "name", "child", "case name"],
       description: ["description", "notes"],
     },
+    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
   },
 
   completions: {
@@ -118,18 +187,32 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       program: ["program"],
       description: ["description", "notes"],
     },
+    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
   },
 
+  /**
+   * A cross-tab, not a row per record. The exported shape is:
+   *
+   *   [year] | [worker] | [program] | Name | Jan | Feb | … | Dec
+   *
+   * with the first three columns unlabelled and one row per
+   * (year, worker, client). The month cells are 0/1 flags for whether that
+   * child was on that worker's caseload in that month — so a worker's caseload
+   * for a month is the sum down its column, not a value to read off.
+   *
+   * `matrix: true` routes it to a bespoke reader; the generic field/alias
+   * matching cannot express this.
+   */
   caseload: {
     slug: "caseload",
     label: "Monthly Census by Worker",
     view: "V_CASELOADS_WKR_MONTH-C",
-    required: ["worker"],
+    matrix: true,
+    required: ["client"],
     fields: {
-      worker: ["worker", "case manager", "caseworker"],
-      month: ["month", "period", "month/year"],
-      activeCases: ["active cases", "cases", "count", "caseload", "total"],
+      client: ["name"],
     },
+    sensitivity: { names: ["client"] },
   },
 
   ontime: {
@@ -164,10 +247,17 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     view: "V_CLIENTS_NEXTCOURT-C",
     required: ["client"],
     fields: {
-      client: ["client", "name", "child", "case name"],
+      client: ["client", "client name", "name", "child", "case name"],
       courtDate: ["next court date", "court date", "date"],
       judge: ["judge"],
+      placement: ["current placement"],
+      worker: ["caseworker", "case manager", "worker"],
+      program: ["program"],
       description: ["court description", "description", "notes"],
+    },
+    sensitivity: {
+      names: ["client", "placement", "worker"],
+      freeText: ["description"],
     },
   },
 

@@ -35,7 +35,7 @@ import path from "node:path";
 import process from "node:process";
 import ExcelJS from "exceljs";
 
-import { REPORT_SPECS, findHeaderRow, type ReportSpec } from "../src/lib/extendedreach/schema";
+import { REPORT_SPECS, findHeaderRow, resolveColumns, type ReportSpec } from "../src/lib/extendedreach/schema";
 
 const args = process.argv.slice(2);
 const opt = (n: string) => {
@@ -47,10 +47,24 @@ const targets = args.filter(
 );
 const OUT_DIR = opt("out") ?? "./data/exports";
 
-/** Columns that carry a person's name, by logical field name. */
-const PII_FIELDS = new Set(["client", "worker", "home", "staff"]);
-/** Columns that may mention a person in prose. */
-const FREETEXT_FIELDS = new Set(["description"]);
+/**
+ * Fallback classification, used only for a report whose spec declares no
+ * `sensitivity` block. Per-report declarations in schema.ts are authoritative:
+ * the open-cases export carries SSN, DOB and Medicaid numbers that no
+ * name-based heuristic would have caught.
+ */
+const DEFAULT_NAME_FIELDS = ["client", "worker", "home", "staff"];
+const DEFAULT_FREETEXT_FIELDS = ["description"];
+
+function sensitivityOf(spec: ReportSpec) {
+  const s = spec.sensitivity;
+  return {
+    names: s?.names ?? DEFAULT_NAME_FIELDS.filter((f) => f in spec.fields),
+    identifiers: s?.identifiers ?? [],
+    birthDates: s?.birthDates ?? [],
+    freeText: s?.freeText ?? DEFAULT_FREETEXT_FIELDS.filter((f) => f in spec.fields),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Synthetic name pools
@@ -179,6 +193,46 @@ function assertUnique(map: Map<string, string>, file: string): void {
   }
 }
 
+/**
+ * Replace an identifier with a synthetic one of the same shape.
+ *
+ * Shape is preserved (digits stay digits, separators stay put) so a column of
+ * SSNs still looks like SSNs and a case number still looks like a case number
+ * — the demo should not visibly differ from the real thing. The mapping is
+ * deterministic, so a case number used as a join key still joins.
+ */
+function synthIdentifier(real: string, field: string): string {
+  const clean = real.trim();
+  if (!clean) return "";
+  let i = 0;
+  return clean.replace(/[0-9A-Za-z]/g, (ch) => {
+    const n = hashInt(`${field}::${clean}::${i++}`, "ident") % 10;
+    return /[0-9]/.test(ch) ? String(n) : String.fromCharCode(65 + (n % 26));
+  });
+}
+
+/**
+ * Shift a date of birth by a stable per-person offset.
+ *
+ * Blanking it would destroy the age distribution, which is one of the things
+ * an executive actually looks at. Shifting by up to about six months keeps
+ * every child in the right age band while making the exact date wrong.
+ */
+function shiftBirthDate(real: string, personKey: string): string {
+  const clean = real.trim();
+  if (!clean) return "";
+  const m = clean.match(/^(\d{4})-(\d{2})-(\d{2})/) ?? clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return clean;
+  const iso = clean.includes("-")
+    ? `${m[1]}-${m[2]}-${m[3]}`
+    : `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  const base = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) return clean;
+  const offset = (hashInt(personKey, "dob") % 361) - 180; // ±180 days
+  base.setUTCDate(base.getUTCDate() + offset);
+  return base.toISOString().slice(0, 10);
+}
+
 // ---------------------------------------------------------------------------
 // Workbook IO
 // ---------------------------------------------------------------------------
@@ -216,10 +270,24 @@ async function collectRealNames(files: string[]): Promise<Set<string>> {
       });
       grid.push(Array.from(cells, (c) => c ?? ""));
     });
+    if (spec.matrix) {
+      // Cross-tab: unlabelled [year | worker | program] then a "Name" column.
+      const hdr = grid.findIndex((row) => row.some((c) => c.toLowerCase() === "name"));
+      if (hdr < 0) continue;
+      const nameCol = grid[hdr].findIndex((c) => c.toLowerCase() === "name");
+      for (let r = hdr + 1; r < grid.length; r++) {
+        for (const idx of [1, nameCol]) {
+          const v = (grid[r]?.[idx] ?? "").trim();
+          if (v && !/^(19|20)\d\d$/.test(v)) names.add(v);
+        }
+      }
+      continue;
+    }
     const found = findHeaderRow(spec, grid);
     if (!found) continue;
+    const sens = sensitivityOf(spec);
     for (const [field, idx] of Object.entries(found.columns)) {
-      if (!PII_FIELDS.has(field)) continue;
+      if (!sens.names.includes(field)) continue;
       for (let r = found.header + 1; r < grid.length; r++) {
         const v = (grid[r]?.[idx] ?? "").trim();
         if (v) names.add(v);
@@ -251,18 +319,42 @@ async function deidentify(file: string, outDir: string) {
     grid.push(Array.from(cells, (c) => c ?? ""));
   });
 
-  const found = findHeaderRow(spec, grid);
-  if (!found) {
-    console.log(`  ✖ ${path.basename(file)} — header not recognised, skipped`);
-    return null;
-  }
+  const sens = sensitivityOf(spec);
 
+  // A cross-tab has no resolvable field row; its name columns are positional.
+  let headerRow: number;
   const piiCols = new Map<number, string>();
   const textCols = new Set<number>();
-  for (const [field, idx] of Object.entries(found.columns)) {
-    if (PII_FIELDS.has(field)) piiCols.set(idx, field);
-    if (FREETEXT_FIELDS.has(field)) textCols.add(idx);
+  const identCols = new Map<number, string>();
+  const dobCols = new Set<number>();
+  let personKeyCol = -1;
+
+  if (spec.matrix) {
+    headerRow = grid.findIndex((row) => row.some((c) => c.toLowerCase() === "name"));
+    if (headerRow < 0) {
+      console.log(`  ✖ ${path.basename(file)} — cross-tab header not found, skipped`);
+      return null;
+    }
+    const nameCol = grid[headerRow].findIndex((c) => c.toLowerCase() === "name");
+    piiCols.set(1, "worker");
+    piiCols.set(nameCol, "client");
+    personKeyCol = nameCol;
+  } else {
+    const found = findHeaderRow(spec, grid);
+    if (!found) {
+      console.log(`  ✖ ${path.basename(file)} — header not recognised, skipped`);
+      return null;
+    }
+    headerRow = found.header;
+    for (const [field, idx] of Object.entries(found.columns)) {
+      if (sens.names.includes(field)) piiCols.set(idx, field);
+      if (sens.freeText.includes(field)) textCols.add(idx);
+      if (sens.identifiers.includes(field)) identCols.set(idx, field);
+      if (sens.birthDates.includes(field)) dobCols.add(idx);
+      if (field === "client") personKeyCol = idx;
+    }
   }
+  const found = { header: headerRow };
 
   // Pass 1 — build the full real→synthetic map so free text can be scrubbed
   // against every name that appears anywhere in the file.
@@ -270,7 +362,8 @@ async function deidentify(file: string, outDir: string) {
   for (let r = found.header + 1; r < grid.length; r++) {
     for (const idx of piiCols.keys()) {
       const real = (grid[r]?.[idx] ?? "").trim();
-      if (real && !nameMap.has(real)) nameMap.set(real, synthName(real));
+      if (!real || /^(19|20)\d\d$/.test(real)) continue;
+      if (!nameMap.has(real)) nameMap.set(real, synthName(real));
     }
   }
 
@@ -298,12 +391,21 @@ async function deidentify(file: string, outDir: string) {
   // Pass 2 — rewrite cells in place, preserving everything else.
   let namesReplaced = 0;
   let textScrubbed = 0;
+  let identsReplaced = 0;
+  let datesShifted = 0;
+
   ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber <= found.header + 1) return; // 1-indexed; skip header and above
+
+    // Tie identifiers and birth dates to the person on the row, so the same
+    // child keeps one synthetic identity across every column.
+    const personKey =
+      personKeyCol >= 0 ? cellText(row.getCell(personKeyCol + 1).value).trim() : `row-${rowNumber}`;
+
     row.eachCell({ includeEmpty: false }, (cell, col) => {
       const idx = col - 1;
       const raw = cellText(cell.value).trim();
-      if (!raw) return;
+      if (!raw || raw === "-" || raw === "- Not Specified -") return;
 
       if (piiCols.has(idx)) {
         const fake = nameMap.get(raw);
@@ -311,6 +413,12 @@ async function deidentify(file: string, outDir: string) {
           cell.value = fake;
           namesReplaced++;
         }
+      } else if (identCols.has(idx)) {
+        cell.value = synthIdentifier(raw, identCols.get(idx)!);
+        identsReplaced++;
+      } else if (dobCols.has(idx)) {
+        cell.value = shiftBirthDate(raw, personKey || raw);
+        datesShifted++;
       } else if (textCols.has(idx)) {
         const scrubbed = scrubText(raw);
         if (scrubbed !== raw) {
@@ -324,9 +432,15 @@ async function deidentify(file: string, outDir: string) {
   const outFile = path.join(outDir, path.basename(file));
   await wb.xlsx.writeFile(outFile);
 
+  const bits = [
+    `${nameMap.size} people`,
+    `${namesReplaced} name cells`,
+    identsReplaced ? `${identsReplaced} identifiers` : null,
+    datesShifted ? `${datesShifted} birth dates shifted` : null,
+    textScrubbed ? `${textScrubbed} free-text` : null,
+  ].filter(Boolean);
   console.log(
-    `  ✓ ${path.basename(file).padEnd(34)} ${String(grid.length - found.header - 1).padStart(5)} rows · ` +
-      `${nameMap.size} distinct people → synthetic · ${namesReplaced} cells · ${textScrubbed} free-text scrubbed`,
+    `  ✓ ${path.basename(file).padEnd(32)} ${String(grid.length - found.header - 1).padStart(5)} rows · ${bits.join(" · ")}`,
   );
 
   return { slug: spec.slug, people: nameMap.size, rows: grid.length - found.header - 1 };

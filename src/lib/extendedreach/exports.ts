@@ -88,6 +88,62 @@ function rowsFor(grid: Grid, spec: ReportSpec): Record<string, string>[] {
   return out;
 }
 
+/**
+ * Read the worker × month caseload cross-tab.
+ *
+ * Shape is `[year] | [worker] | [program] | Name | Jan … Dec`, with the first
+ * three columns unlabelled and one row per (year, worker, client). The month
+ * cells are 0/1 flags for whether that child sat on that worker's caseload
+ * that month, so a caseload figure is a column sum, not a cell value.
+ *
+ * Returns monthly active-case totals and each worker's most recent caseload.
+ */
+function readCaseloadMatrix(grid: Grid): {
+  monthly: Map<string, number>;
+  perWorker: Map<string, number>;
+} {
+  const monthly = new Map<string, number>();
+  const perWorker = new Map<string, number>();
+
+  const hdr = grid.findIndex((row) => row.some((c) => c.toLowerCase() === "name"));
+  if (hdr < 0) return { monthly, perWorker };
+
+  const nameCol = grid[hdr].findIndex((c) => c.toLowerCase() === "name");
+  const months = grid[hdr]
+    .map((c, i) => ({ c: c.trim(), i }))
+    .filter(({ c, i }) => i > nameCol && /^[a-z]{3}$/i.test(c));
+
+  let latest = "";
+  for (let r = hdr + 1; r < grid.length; r++) {
+    const row = grid[r];
+    if (!row) continue;
+    const year = (row[0] ?? "").trim();
+    const worker = (row[1] ?? "").trim();
+    if (!/^(19|20)\d\d$/.test(year) || !worker) continue;
+
+    for (const { c: mon, i } of months) {
+      const on = (row[i] ?? "").trim();
+      if (on !== "1") continue;
+      const idx = MONTHS.indexOf(mon.toLowerCase());
+      if (idx < 0) continue;
+      const key = `${year}-${String(idx + 1).padStart(2, "0")}`;
+      monthly.set(key, (monthly.get(key) ?? 0) + 1);
+      if (key > latest) latest = key;
+      perWorker.set(`${key}::${worker}`, (perWorker.get(`${key}::${worker}`) ?? 0) + 1);
+    }
+  }
+
+  // Collapse per-worker counts to the most recent month present.
+  const current = new Map<string, number>();
+  for (const [key, n] of perWorker) {
+    const [month, worker] = key.split("::");
+    if (month === latest) current.set(worker, n);
+  }
+  return { monthly, perWorker: current };
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
 async function gridFor(dir: string, slug: string): Promise<Grid> {
   const file = await newestExport(dir, slug);
   if (!file) return [];
@@ -229,9 +285,14 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
     const childName = r.client ?? "";
     const worker = ensureWorker(r.worker ?? "");
     const placement = (r.placementType ?? "").toLowerCase();
+    // The roster carries a real Case # for every row. Prefer it over a hash of
+    // the name: it survives spelling drift and distinguishes siblings, which
+    // name matching cannot.
+    const caseNo = (r.caseNumber ?? "").trim();
+    const id = caseNo ? `FC-${caseNo}` : caseDisplayId(childName);
     return {
-      id: caseDisplayId(childName),
-      displayId: caseDisplayId(childName),
+      id,
+      displayId: id,
       childName,
       status: "active",
       teamId: worker?.teamId ?? "team-unassigned",
@@ -251,8 +312,16 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
   const caseByName = new Map(cases.map((c) => [normaliseName(c.childName), c]));
 
   // --- compliance obligations ----------------------------------------------
+  //
+  // "Due Soon / Past Due" is a filtered view of "In Process", not a separate
+  // set of work: 98.4% of its rows appear in both. Ingesting them naively
+  // double-counts 1,139 obligations and would inflate the headline backlog by
+  // roughly half. Rows are therefore keyed on the obligation itself — subject,
+  // type and due date — and the first sighting wins.
   const compliance: ComplianceItem[] = [];
+  const seenObligation = new Set<string>();
   let seq = 0;
+  let duplicatesSkipped = 0;
 
   const ingestTasks = (grid: Grid, spec: ReportSpec, subject: "client" | "home") => {
     const rows = rowsFor(grid, spec);
@@ -266,6 +335,14 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
       // A home obligation is not a case obligation; give it an HM- id so the
       // distinction survives instead of looking like a failed case join.
       const subjectId = subject === "home" ? homeDisplayId(name) : caseDisplayId(name);
+
+      const obligationKey = `${linked?.id ?? subjectId}|${type}|${due ?? ""}`;
+      if (seenObligation.has(obligationKey)) {
+        duplicatesSkipped++;
+        continue;
+      }
+      seenObligation.add(obligationKey);
+
       compliance.push({
         id: `ci-${spec.slug}-${seq++}`,
         caseId: linked?.id ?? subjectId,
@@ -277,9 +354,15 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
     }
   };
 
+  // Order matters only for which row wins a duplicate; the narrower, more
+  // recently-scoped report is ingested first so its status is the one kept.
   ingestTasks(gPastCase, REPORT_SPECS.pastdue_case, "client");
   ingestTasks(gPastHome, REPORT_SPECS.pastdue_home, "home");
   ingestTasks(gInproc, REPORT_SPECS.inprocess, "client");
+
+  if (duplicatesSkipped) {
+    diagnostics.deduplicated = { found: true, rows: duplicatesSkipped };
+  }
 
   // Roll the worst state on each case up onto the case record.
   const rank: Record<ComplianceState, number> = { ok: 0, due_soon: 1, overdue: 2 };
@@ -290,9 +373,9 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
 
   // --- caseload census ------------------------------------------------------
   // Only used to register workers who hold cases but appear on no task row.
-  const loadRows = rowsFor(gCaseload, REPORT_SPECS.caseload);
-  note("caseload", gCaseload, loadRows);
-  for (const r of loadRows) ensureWorker(r.worker ?? "");
+  const { monthly, perWorker } = readCaseloadMatrix(gCaseload);
+  diagnostics.caseload = { found: gCaseload.length > 0, rows: monthly.size };
+  for (const worker of perWorker.keys()) ensureWorker(worker);
 
   const caseworkers = [...workers.values()];
   const teams: Team[] = caseworkers.map((w) => ({
@@ -302,9 +385,12 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
   }));
 
   // --- trend ----------------------------------------------------------------
-  // The monthly census report carries history; without it there is no trend,
-  // and an invented one would be worse than none.
-  const trend: TrendPoint[] = [];
+  // The caseload cross-tab is the only source of history in the export set —
+  // summing its monthly flags gives a real active-case series. Intakes and
+  // discharges are not derivable from it and stay zero rather than invented.
+  const trend: TrendPoint[] = [...monthly.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, activeCases]) => ({ month, activeCases, intakes: 0, discharges: 0 }));
 
   return {
     dataset: { teams, caseworkers, cases, compliance, trend },
