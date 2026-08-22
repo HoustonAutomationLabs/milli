@@ -323,6 +323,44 @@ Loading all six reports together:
 
 ---
 
+## All ten exports verified
+
+Every report the dashboard depends on has now been run through
+`inspect:export` against a real export. **10 of 10 resolve.** Four needed
+schema work beyond an alias:
+
+**`ontime` is not a monthly rollup.** Despite the "% On Time by Program"
+label, the export is one row per completed item with its days-variance:
+`Avg Days Var. | [year] | [worker] | [type] | Date | Name`, columns 1–3
+unlabelled. That is better than a rollup — the percentage is derived as the
+share of rows with variance ≤ 0, so it can be cut by month, worker or task
+type. Over 3,184 completed items the agency runs **41.1% on time**, ranging
+37–48% month to month, with mean lateness improving from +61 days in January
+to +17 in August.
+
+**`openbeds` carries more than beds.** Street `Address` and `Phone` for every
+home, and an `Active Placements` column listing the children in each home **by
+name, gender and age**. All three are declared sensitive.
+
+**`staffexp`** is `Date | Title | Name` — the requirement is in `Title`.
+
+**`caseload`** is the cross-tab described above.
+
+### The free-text lesson
+
+De-identifying these together surfaced a real defect. Free text was being
+scrubbed against each file's *own* name columns, but a case note routinely
+names someone who appears as a name column only in a *different* report — the
+open-beds placements column lists children who are nowhere in that file's own
+name columns. Those names survived. The synthetic mapping is now built once
+across the whole run and shared, which is also why all reports must be
+de-identified in a single invocation.
+
+A backstop now also catches the "Ms. Surname" form that case notes use for
+people who appear in no name column anywhere.
+
+---
+
 ## Report inventory — what feeds what
 
 The dashboard's five "spine" metrics all map to reports that already exist.

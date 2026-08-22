@@ -61,6 +61,20 @@ export interface TrendPoint {
   discharges: number;
 }
 
+/**
+ * On-time completion for one month, derived from per-item due-date variance.
+ * Non-PHI and aggregate only.
+ */
+export interface OnTimePoint {
+  month: string; // e.g. "2026-08"
+  /** Items completed on or before their due date, as a percentage. */
+  onTimePct: number;
+  /** How many completed items the percentage is based on. */
+  sample: number;
+  /** Mean days late across the sample; negative means early on average. */
+  avgDaysLate: number;
+}
+
 /** The full dataset the metrics layer reduces over. */
 export interface CaseworkDataset {
   teams: Team[];
@@ -68,4 +82,6 @@ export interface CaseworkDataset {
   cases: CaseRecord[];
   compliance: ComplianceItem[];
   trend: TrendPoint[];
+  /** Present when the on-time variance export is available. */
+  onTime?: OnTimePoint[];
 }
