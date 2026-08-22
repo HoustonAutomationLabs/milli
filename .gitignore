@@ -39,12 +39,18 @@ yarn-error.log*
 .vscode/
 .idea/
 
-# ExtendedReach exports contain PHI — never commit them.
+# Real ExtendedReach exports contain PHI — never commit them.
+# /data/exports is the working directory for real downloads and stays ignored.
 # Both extensions: most report views export Excel, but Compliance Tracking and
 # Reports Completed by Date arrive as CSV.
+#
+# /data/demo holds the de-identified set that ships with the repo and powers
+# the public demo. It is the ONLY place a workbook may be committed, and only
+# after `npm run deidentify` has been run over the whole set.
 /data/exports
 *.xlsx
 *.csv
+!/data/demo/*.xlsx
 
 # saved browser session for the exporter — an authenticated credential
 .er-session.json

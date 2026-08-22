@@ -1,0 +1,11 @@
+These workbooks are DE-IDENTIFIED copies of ExtendedReach exports.
+
+Row counts, dates, statuses, task types and distributions are real.
+Every personal name has been replaced with a synthetic one, consistently
+across files, via a one-way hash. They cannot be reversed.
+
+Generated: 2026-08-22T19:35:33.884Z
+Files: 10
+
+Safe to use for demos. Still not a substitute for real access controls
+if genuine data is ever loaded.

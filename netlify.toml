@@ -1,16 +1,19 @@
 # Netlify configuration — DEMO deployment.
 #
-# This site exists to show the dashboard to stakeholders. It runs on synthetic
-# data and a development sign-in, and must stay that way while hosted here.
+# This site shows the dashboard to stakeholders using the agency's real
+# operational figures on DE-IDENTIFIED data: real row counts, dates, statuses,
+# task types and distributions, with every name, identifier, address and phone
+# replaced and birth dates shifted. See data/demo/DEIDENTIFIED.txt.
 #
-# It is NOT a production deployment and must never be pointed at real data:
+# It is NOT a production deployment and must never be pointed at real records:
 #   - Authentication is stubbed (src/lib/auth.ts) — the login page hands out a
-#     session for any role on request. There is no real identity provider.
+#     session for any role on request. There is no real identity provider, and
+#     this site is reachable by anyone with the URL.
 #   - Netlify does not sign a BAA on standard plans, so PHI must not be
 #     processed or stored here. See the compliance section of README.md.
 #
-# DATA_SOURCE is pinned to "mock" below so a stray environment variable cannot
-# quietly turn this into a live PHI surface.
+# ER_EXPORT_DIR is pinned to data/demo below. Never point it at data/exports,
+# which is where real downloads live.
 
 [build]
   command = "npm run build"
@@ -18,8 +21,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  # Synthetic fixtures only. Do not change this on this site.
-  DATA_SOURCE = "mock"
+  # De-identified data only. Never point this at data/exports.
+  DATA_SOURCE = "exports"
+  ER_EXPORT_DIR = "./data/demo"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
