@@ -76,6 +76,7 @@ const LABELS: Record<ComplianceItem["kind"], string> = {
   medication_review: "Medication review",
   court_report: "Court report",
   case_plan: "Case plan review",
+  other: "Other obligation",
 };
 
 const cases: CaseRecord[] = [];

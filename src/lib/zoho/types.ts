@@ -31,7 +31,7 @@ export interface Caseworker {
 export interface ComplianceItem {
   id: string;
   caseId: string;
-  kind: "home_visit" | "medical_exam" | "medication_review" | "court_report" | "case_plan";
+  kind: "home_visit" | "medical_exam" | "medication_review" | "court_report" | "case_plan" | "other";
   label: string;
   dueDate: string; // ISO date
   state: ComplianceState;

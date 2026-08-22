@@ -1,27 +1,34 @@
 /**
- * Zoho Analytics data client.
+ * Casework data client — the single boundary between a data source and the app.
  *
- * ExtendedReach's only confirmed data tap is Zoho Analytics ("SOHO Analytics"),
- * which the agency must enable via a plan upgrade (see the strategy brief,
- * Phase 0 item #1). Zoho Analytics exposes a REST/Data API; this module is the
- * single boundary between that API and the rest of the app.
+ * (Named `zoho/` for historical reasons; Zoho is no longer the intended path.
+ * See docs/extendedreach-audit.md.)
  *
- * Two modes, chosen by DATA_SOURCE:
- *   - "mock" (default): returns synthetic fixtures, no network.
- *   - "zoho": queries Zoho Analytics live. The live path is stubbed with the
- *     exact TODOs needed once Phase 0 confirms workspace/view names + OAuth.
+ * Three modes, chosen by DATA_SOURCE:
+ *   - "mock" (default): synthetic fixtures, no network. Used for development.
+ *   - "exports": reads the Excel workbooks that
+ *     `scripts/export-extendedreach.mjs` pulls out of ExtendedReach. This is
+ *     the intended production path.
+ *   - "zoho": the original Zoho Analytics plan. RETAINED BUT NOT RECOMMENDED —
+ *     the agency declined the $500 + $125/mo feed, and the system audit found
+ *     it unnecessary: every metric the dashboard needs is reachable through
+ *     one-click Excel exports. The live path remains stubbed.
  *
  * Everything downstream depends only on `getDataset()` returning a
- * `CaseworkDataset`, so flipping to live data changes nothing in the UI.
+ * `CaseworkDataset`, so switching modes changes nothing in the UI.
  */
 
 import type { CaseworkDataset } from "./types";
 import { MOCK_DATASET } from "./mock";
+import { loadExportDataset } from "../extendedreach/exports";
 
-type Mode = "mock" | "zoho";
+type Mode = "mock" | "exports" | "zoho";
 
 function mode(): Mode {
-  return process.env.DATA_SOURCE === "zoho" ? "zoho" : "mock";
+  const m = process.env.DATA_SOURCE;
+  if (m === "zoho") return "zoho";
+  if (m === "exports") return "exports";
+  return "mock";
 }
 
 /**
@@ -78,6 +85,29 @@ async function queryZoho<T>(_viewName: string): Promise<T[]> {
 export async function getDataset(): Promise<CaseworkDataset> {
   if (mode() === "mock") {
     return MOCK_DATASET;
+  }
+
+  if (mode() === "exports") {
+    const dir = process.env.ER_EXPORT_DIR ?? "./data/exports";
+    const { dataset, diagnostics } = await loadExportDataset(dir);
+
+    // Zero rows against a found workbook means the header names drifted — the
+    // dashboard would render empty and look merely quiet rather than broken.
+    const empty = Object.entries(diagnostics).filter(([, d]) => d.found && d.rows === 0);
+    if (empty.length) {
+      console.warn(
+        `[datasource] ${empty.length} ExtendedReach export(s) parsed to zero rows: ` +
+          `${empty.map(([slug]) => slug).join(", ")}. Check the column headers in ` +
+          `src/lib/extendedreach/exports.ts against a real workbook.`,
+      );
+    }
+    if (!dataset.cases.length) {
+      throw new Error(
+        `No cases loaded from ${dir}. Run scripts/export-extendedreach.mjs first, ` +
+          `or set DATA_SOURCE=mock for development.`,
+      );
+    }
+    return dataset;
   }
 
   // Live path — assembled from separate Zoho views once available.
