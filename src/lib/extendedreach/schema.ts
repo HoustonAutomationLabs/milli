@@ -63,6 +63,9 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     required: ["dueDate", "type"],
     fields: {
       dueDate: ["date", "due", "due date"],
+      // Real values seen: Due, Submitted, Draft, Expires, Rejected,
+      // Scheduled, Event — not the "Past Due" / "Due in 30 Days" section
+      // labels the report groups by on screen.
       status: ["status", "state"],
       type: ["type", "task", "task type", "obligation", "report type"],
       worker: ["worker", "case manager", "caseworker", "assigned to", "performer"],

@@ -161,8 +161,24 @@ function classifyKind(type: string): ComplianceItem["kind"] {
   return "other";
 }
 
+/**
+ * Statuses ExtendedReach actually uses on task reports, confirmed against a
+ * real export: Due, Submitted, Draft, Expires, Rejected, Scheduled, Event.
+ *
+ * The distinction that matters is Submitted. A submitted item is finished work
+ * sitting with a supervisor for approval — the caseworker has nothing left to
+ * do. Counting those as overdue inflates the backlog by 165 items (of 997) and
+ * would show staff as delinquent for work they completed.
+ */
 function stateFor(dueIso: string | null, statusText: string): ComplianceState {
-  if (/past due|overdue/i.test(statusText)) return "overdue";
+  const status = statusText.trim().toLowerCase();
+
+  // Done and awaiting approval — not the caseworker's outstanding work.
+  if (status === "submitted") return "ok";
+
+  // Calendar entries, not date-driven obligations.
+  if (status === "scheduled" || status === "event") return "ok";
+
   if (!dueIso) return "due_soon";
   const d = daysOverdue(dueIso);
   if (d > 0) return "overdue";
