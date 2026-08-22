@@ -65,6 +65,7 @@ src/
     audit.ts             # PHI-access audit logging
     metrics.ts           # role-scoped aggregation over the dataset
     extendedreach/
+      schema.ts          # per-report field/header aliases (source of truth)
       exports.ts         # parses exported .xlsx workbooks -> CaseworkDataset
       identity.ts        # name normalisation + stable pseudonymous ids
     zoho/
@@ -73,6 +74,7 @@ src/
       mock.ts            # synthetic fixtures + dev accounts
 scripts/
   export-extendedreach.mjs  # Playwright exporter — clicks the Excel buttons
+  inspect-export.ts         # reconciles a real workbook against schema.ts
 middleware.ts            # edge guard: bounce unauthenticated requests to /login
 
 The `zoho/` directory keeps its name for now to avoid churning imports; Zoho is
@@ -130,9 +132,14 @@ To run against real exports:
 
 ```bash
 node scripts/export-extendedreach.mjs --login   # once, interactive (MFA)
-node scripts/export-extendedreach.mjs           # pulls all ten reports
+npm run export:er                               # pulls all ten reports
+npm run inspect:export -- ./data/exports        # reconcile columns (do this first time)
 DATA_SOURCE=exports npm run dev
 ```
+
+`inspect:export` is the step that turns a mismatch from "the dashboard is
+empty" into "add this alias to schema.ts". Its output masks names and
+free-text, so it is safe to paste into a ticket.
 
 See [`scripts/README.md`](scripts/README.md) for the exporter, and
 [`docs/extendedreach-audit.md`](docs/extendedreach-audit.md) for which report feeds which metric.
@@ -143,9 +150,9 @@ See [`scripts/README.md`](scripts/README.md) for the exporter, and
    feed costs $500 + $125/month, was declined, and is unnecessary. Replaced by the export path.
    See [`docs/extendedreach-audit.md`](docs/extendedreach-audit.md).
 2. **Reconcile the export column mappings (blocking).** The header names in
-   `src/lib/extendedreach/exports.ts` are the audit's best reading of each report. Run one real
-   export through the loader and fix any mismatch — a header that does not match yields zero rows
-   and logs a warning naming the slug.
+   `src/lib/extendedreach/schema.ts` are the audit's best reading of each report. Run
+   `npm run inspect:export -- ./data/exports` against real workbooks and add any missing header
+   aliases it reports. Until this passes for every report, the data is not trustworthy.
 3. **Ask the vendor for a Case ID column.** Every report identifies people by name only. With
    sibling groups already in the data, name-matching is the weakest link in the pipeline.
 4. **Ratify the abandoned-record cutoff.** ~Half of 1,351 past-due items date from 2020–2023.

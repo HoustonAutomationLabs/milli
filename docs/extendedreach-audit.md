@@ -130,6 +130,12 @@ as caseload in the UI. True caseload comes only from `V_CASELOADS_WKR_MONTH-C`.
 
 Revisit if the exec team later determines the column means something else.
 
+**Verify the column names before trusting any of this.** Everything below was
+read off ExtendedReach's screens, not from an exported file. Run
+`npm run inspect:export -- ./data/exports` against real workbooks; it reports
+per-report which fields resolved and prints the alias line to add for any that
+did not.
+
 **Header layout is irregular.** The sample export carried three unlabelled
 leading columns (year, month, record type) before the real header row, and
 grouping rows are interleaved with data rows. The loader locates the header by
