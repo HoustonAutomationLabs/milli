@@ -41,8 +41,11 @@ The session is written to `.er-session.json`.
 node scripts/export-extendedreach.mjs
 ```
 
-Workbooks land in `ER_EXPORT_DIR` (default `./data/exports`) named
-`<slug>_YYYYMMDD.xlsx`, alongside a `manifest.json` recording what succeeded.
+Exports land in `ER_EXPORT_DIR` (default `./data/exports`) named
+`<slug>_YYYYMMDD.<ext>`, alongside a `manifest.json` recording what succeeded.
+The extension is whatever the download actually was: most report views give
+`.xlsx`, but the Compliance Tracking custom reports give `.csv` even though the
+control is labelled "Excel".
 
 Useful flags:
 
@@ -66,13 +69,25 @@ Check a real workbook before wiring anything up:
 ```bash
 npm run inspect:export -- ./data/exports              # whole directory
 npm run inspect:export -- ./data/exports/pastdue_case_20260822.xlsx
+npm run inspect:export -- ./some/file.csv --slug compliance_case
 ```
+
+It reads `.xlsx` and `.csv`, and picks the report spec from the filename — so
+name a file `<slug>_YYYYMMDD.<ext>` or pass `--slug`.
 
 For each report it prints which fields resolved to which header, which did not,
 what columns the file has that nothing claimed, and the exact alias line to add
 to `src/lib/extendedreach/schema.ts` when something is missing. Add the alias,
 re-run, repeat until it reports all reports ready. Exit code is `2` while any
 report still mismatches, so CI can gate on it.
+
+**Compliance Tracking is checked differently.** It is a matrix — one row per
+case, one column per obligation — so there is no fixed field list to tick off.
+Instead the tool resolves the four identity columns, counts the obligation
+columns, and parses every cell, failing if any cell has a form
+`parseMatrixCell` does not recognise. An unrecognised cell is the failure that
+matters there: it means ExtendedReach has a status word that would otherwise be
+silently miscategorised.
 
 **The output is safe to share.** Names and free-text values are masked to their
 shape (`Xxxx, Xxxxx`); only column labels, dates and categorical values
@@ -86,11 +101,19 @@ elsewhere.
 DATA_SOURCE=exports npm run dev
 ```
 
-`src/lib/extendedreach/exports.ts` reads the newest workbook per slug and maps
-them into the `CaseworkDataset` the app already consumes. A missing workbook
-degrades that slice to empty rather than failing the whole load; a workbook that
+`src/lib/extendedreach/exports.ts` reads the newest export per slug and maps
+them into the `CaseworkDataset` the app already consumes. A missing file
+degrades that slice to empty rather than failing the whole load; a file that
 parses to zero rows logs a warning naming the slug, which is the signal that
 column headers drifted upstream.
+
+Not every verified report is loaded. `pastdue_case`, `pastdue_home`,
+`inprocess`, `opencases` and `caseload` feed the dataset. `needapproval_case`,
+`rejected_case`, `reportscompleted` and `compliance_case` are verified and
+parse, but are deliberately not merged in — the compliance matrix alone carries
+3,952 obligations against the task reports' 1,161, and folding it in would
+change every headline number on the dashboard. That is an exec decision, not a
+side effect of adding a parser.
 
 ## One thing still to confirm
 

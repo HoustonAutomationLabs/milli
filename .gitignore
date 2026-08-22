@@ -39,9 +39,12 @@ yarn-error.log*
 .vscode/
 .idea/
 
-# ExtendedReach exports contain PHI — never commit them
+# ExtendedReach exports contain PHI — never commit them.
+# Both extensions: most report views export Excel, but Compliance Tracking and
+# Reports Completed by Date arrive as CSV.
 /data/exports
 *.xlsx
+*.csv
 
 # saved browser session for the exporter — an authenticated credential
 .er-session.json
