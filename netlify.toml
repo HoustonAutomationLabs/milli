@@ -1,0 +1,37 @@
+# Netlify configuration — DEMO deployment.
+#
+# This site exists to show the dashboard to stakeholders. It runs on synthetic
+# data and a development sign-in, and must stay that way while hosted here.
+#
+# It is NOT a production deployment and must never be pointed at real data:
+#   - Authentication is stubbed (src/lib/auth.ts) — the login page hands out a
+#     session for any role on request. There is no real identity provider.
+#   - Netlify does not sign a BAA on standard plans, so PHI must not be
+#     processed or stored here. See the compliance section of README.md.
+#
+# DATA_SOURCE is pinned to "mock" below so a stray environment variable cannot
+# quietly turn this into a live PHI surface.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Synthetic fixtures only. Do not change this on this site.
+  DATA_SOURCE = "mock"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Defence in depth: next.config.mjs already sets these, but a misconfigured
+# build should not silently drop them.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    # Demo data only, but keep crawlers off it regardless.
+    X-Robots-Tag = "noindex, nofollow"
