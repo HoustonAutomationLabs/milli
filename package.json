@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "inspect:export": "tsx scripts/inspect-export.ts",
-    "export:er": "node scripts/export-extendedreach.mjs"
+    "export:er": "node scripts/export-extendedreach.mjs",
+    "deidentify": "tsx scripts/deidentify-export.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
