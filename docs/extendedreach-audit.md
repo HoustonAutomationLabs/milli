@@ -93,6 +93,54 @@ overdue item so the abandoned share is **measured**, with the cutoff set by
 
 ---
 
+## Verified against a real export
+
+`V_TASKS_INPROC_PASTDUEBYDATE-C` was exported and run through
+`npm run inspect:export`. **All seven columns resolved on the first attempt** —
+`Date | Status | Type | Worker | Client | Program | Description` — and the row
+counts reconcile exactly with the screen reading: 1,161 rows, **997 past due,
+164 upcoming**.
+
+Three things the real file changed:
+
+**1. The abandoned share is 31%, not ~50%.** Age of the 997 past-due items:
+
+| Age | Count | Share |
+|---|---|---|
+| 0–30 days | 181 | 18% |
+| 31–90 days | 209 | 21% |
+| 91–365 days | 296 | 30% |
+| **Over 1 year** | **311** | **31%** |
+
+Of those, 115 are more than two years old and the oldest is 6.4 years. So the
+working assumption was too optimistic: **686 items are under a year old**, not
+the ~500 a half-and-half split implied.
+
+**2. Status is not what the screen suggested.** The report groups visually into
+"Past Due" and "Due in Next 30 Days", but the exported `Status` column carries
+the task's own state: Due (784), Submitted (166), Draft (148), Expires (50),
+Rejected (6), Scheduled (6), Event (1).
+
+This matters. **165 of the 997 past-due items are already Submitted** — finished
+work sitting with a supervisor for approval. Counting them as overdue overstates
+the backlog and shows staff as delinquent for work they completed. `stateFor()`
+now treats Submitted as satisfied. Netting them out:
+
+- Genuinely outstanding: **832**
+- Of which actionable (under a year): **590**
+- Of which abandoned (over a year): **242**
+
+**3. The organisation is larger than the completion sample suggested.** This
+report names **32 distinct workers** and **151 distinct clients** with open
+tasks, across **62 task types**. The August completion sample showed only 9
+workers because that column records who *entered* an item in one month, not who
+carries the caseload — further confirmation of the entered-by finding below.
+
+Workload remains concentrated: the top worker holds 338 of 1,161 open tasks
+(29%), and the top four hold 65%.
+
+---
+
 ## Report inventory — what feeds what
 
 The dashboard's five "spine" metrics all map to reports that already exist.
@@ -129,12 +177,6 @@ process; it is *not* evidence of workload imbalance, and must never be labelled
 as caseload in the UI. True caseload comes only from `V_CASELOADS_WKR_MONTH-C`.
 
 Revisit if the exec team later determines the column means something else.
-
-**Verify the column names before trusting any of this.** Everything below was
-read off ExtendedReach's screens, not from an exported file. Run
-`npm run inspect:export -- ./data/exports` against real workbooks; it reports
-per-report which fields resolved and prints the alias line to add for any that
-did not.
 
 **Header layout is irregular.** The sample export carried three unlabelled
 leading columns (year, month, record type) before the real header row, and
