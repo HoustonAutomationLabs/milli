@@ -513,3 +513,90 @@ Adding the approval queue does not inflate the backlog, which was the risk.
 No `needapproval_case` file exists in `data/demo`, so the public demo shows
 tier 2's count without its approver breakdown, and says so on the page rather
 than rendering an empty chart.
+
+---
+
+## De-identification failure — the `type` column
+
+_2026-08-24. Found while preparing the morning board for deployment. Recorded
+here in full because the corrective action depends on understanding the shape
+of the mistake, not just the instance._
+
+### What happened
+
+`npm run deidentify` scrubs the fields `schema.ts` declares sensitive. For the
+task reports that was `client`/`home`/`worker` and `description`. **The `type`
+column was declared as nothing and passed through untouched.**
+
+In this agency's data that column is not structural vocabulary. Certification
+and training items are named after the person they belong to:
+
+```
+SIDS Expires (<given>)
+Valid Drivers License Expires (<given> <surname>)
+Child Logs (<given>, <given>)              <- sibling groups
+```
+
+**55 distinct real given names across 170 rows of `pastdue_home`** survived
+de-identification, reached `data/demo`, and were committed to a **public**
+GitHub repository and served from a **public** Netlify demo with no password.
+They are foster parents and household members; the sibling-pair form names
+children.
+
+### Why the existing safeguards missed it
+
+Three separate things had to line up, and all three did.
+
+1. **Sensitivity is declared per field, and nobody declares a `type` column.**
+   It reads as an enum. In 6 of 10 reports it very nearly is.
+2. **`scrubText`'s backstops did not match the shape.** It catches
+   `Surname, Given` and `Ms. Surname` — the forms found in case notes. A bare
+   given name in parentheses matches neither.
+3. **The de-identifier's own output looked healthy.** It reports rows, people
+   and cells replaced. Those counts were all correct. They describe what it
+   scrubbed, and say nothing about what it never examined — which is precisely
+   where the failure was.
+
+The audit's earlier "free-text lesson" identified this class of bug: names
+appear in fields not classified as name fields. It recurred anyway, in a
+column that looked structural rather than free-form.
+
+### The fix
+
+- `type` declared as free text on all seven reports that carry one, including
+  the three that previously had no `sensitivity` block at all.
+- A parenthetical backstop in `scrubText`, holding back only recognisable task
+  vocabulary. A false positive corrupts a demo label; a false negative
+  publishes a child's name, so the bias is toward replacing.
+- The generic `Surname, Given` backstop is now anchored to skip parentheticals,
+  so a sibling pair stays a pair instead of being rewritten twice.
+- `synthGiven()` for contexts holding a first name alone — substituting a full
+  identity there would change the shape of the data as well as the name.
+- `scripts/repair-demo-type-column.ts` repaired the 170 committed labels in
+  place. The de-identifier could not be re-run: `buildPools` excludes every
+  name found in its input, so a second pass over already-scrubbed files
+  depletes the pool to nothing. That guard is correct; it just makes
+  re-scrubbing impossible by design.
+- **`npm run verify:deidentified`** — a fail-closed check over EVERY column of
+  every file, masked output, non-zero exit on any finding. This is the control
+  that was missing. The de-identifier verifies its own intentions; this
+  verifies the artefact.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| Canary names through the fixed scrubber | none survived, all three shapes |
+| Task vocabulary preserved | `(Medication Review)`, `(Quarterly)`, `(Home)` intact |
+| `verify:deidentified` over `data/demo` | PASS, 10 files |
+| Audit figures after repair | 2,766 / 1,556 / 902 / 654 / 181 — all unchanged |
+
+### Still outstanding
+
+Fixing the data forward does not unpublish it. The names remain in the public
+repository's **git history**, and GitHub keeps orphaned blobs reachable and
+cached even after a force-push. Removing them properly means rewriting history
+*and* asking GitHub Support to purge the cache — and assuming the data may
+already have been fetched. **The repository is still public.** That decision,
+and whether this needs to be reported to the agency under its breach
+procedures, sit with the exec team.

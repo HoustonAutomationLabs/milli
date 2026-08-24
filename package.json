@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "inspect:export": "tsx scripts/inspect-export.ts",
     "export:er": "node scripts/export-extendedreach.mjs",
-    "deidentify": "tsx scripts/deidentify-export.ts"
+    "deidentify": "tsx scripts/deidentify-export.ts",
+    "verify:deidentified": "tsx scripts/verify-deidentified.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

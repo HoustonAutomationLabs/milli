@@ -1,11 +1,39 @@
 These workbooks are DE-IDENTIFIED copies of ExtendedReach exports.
 
 Row counts, dates, statuses, task types and distributions are real.
-Every personal name has been replaced with a synthetic one, consistently
+Personal names have been replaced with synthetic ones, consistently
 across files, via a one-way hash. They cannot be reversed.
 
 Generated: 2026-08-22T19:35:33.884Z
 Files: 10
+
+REMEDIATED 2026-08-24
+---------------------
+An earlier version of this file claimed that EVERY personal name had been
+replaced. That claim was wrong, and the wrongness was published.
+
+De-identification scrubs only the fields `schema.ts` declares sensitive. The
+task `type` column was declared as nothing, and in this agency's data it
+carries people's given names, because certification items are named after the
+person they belong to — "SIDS Expires (<given>)", "Child Logs (<given>,
+<given>)" for sibling groups. 55 distinct real given names across 170 rows of
+pastdue_home reached this directory, a public GitHub repository and a public
+Netlify demo.
+
+What changed:
+  - `type` is now declared free text on every report that has one, and the
+    scrubber gained a backstop for the parenthetical form, which none of its
+    existing rules matched.
+  - The 170 affected labels in pastdue_home were repaired in place by
+    `scripts/repair-demo-type-column.ts`. Every other cell is byte-identical;
+    all audit figures still reconcile exactly (2,766 obligations, 1,556
+    overdue, 902 / 654 / 181).
+  - `npm run verify:deidentified -- ./data/demo` now checks EVERY column of
+    every file and exits non-zero on any name it finds. Run it before
+    publishing. It passes on this directory.
+
+Assume the names were fetched while they were public. Removing them here does
+not remove them from the repository's git history.
 
 Safe to use for demos. Still not a substitute for real access controls
 if genuine data is ever loaded.

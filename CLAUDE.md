@@ -36,6 +36,10 @@ wrong.** This was requested explicitly. Concretely:
    initials, or aggregates. `npm run inspect:export` masks by default.
 4. Real exports live in `./data/exports` and are gitignored. So is
    `.er-session.json`, which is an authenticated credential.
+5. **Run `npm run verify:deidentified -- <dir>` before publishing anything.**
+   It checks every column of every file and exits non-zero on any unscrubbed
+   name. The de-identifier's own report cannot catch this class of mistake —
+   it counts what it replaced, not what it never looked at.
 
 ## Project facts established so far
 
@@ -93,6 +97,13 @@ wrong.** This was requested explicitly. Concretely:
 - **`Scheduled` and `Event` rows carry dates but cannot be late.** Flagged
   `calendarOnly` at load. Anything that ages items by due date must skip them
   or every past calendar entry lands in the backlog.
+- **The task `type` column carries people's names.** Certification items are
+  named after the person: `SIDS Expires (<given>)`, `Child Logs (<given>,
+  <given>)` for sibling groups. It was declared sensitive in no report, so 55
+  real given names across 170 rows reached the public repo and the public
+  demo. `type` is now free text everywhere and the scrubber has a
+  parenthetical backstop. **Assume any column can contain a name until
+  checked.**
 - **Holder attribution never uses `Worker`.** Tier 2 is held by `Submit To`;
   the other tiers by the case's assigned worker from the open-cases roster.
   Items naming nobody are counted in totals but excluded from the ranking, and
@@ -101,6 +112,7 @@ wrong.** This was requested explicitly. Concretely:
 ## Commands
 
 ```bash
+npm run verify:deidentified -- ./data/demo # BEFORE publishing; exits 1 on a name
 npm run dev                                # mock data
 npm run export:er                          # pull reports from ExtendedReach
 npm run inspect:export -- ./data/exports   # reconcile columns; masked output
