@@ -1,22 +1,37 @@
 /**
  * Staff training library.
  *
- * Videos are not hosted here. Each entry is a **permalink** to a post on the
- * agency's own Instagram account, and the page renders it through Instagram's
- * own embed endpoint. Two reasons that matters:
+ * Two kinds of entry, and the difference matters for privacy rather than
+ * convenience:
  *
- * 1. Re-hosting a copy would put the agency's media on the app's own origin.
- *    Instagram's terms do not permit redistributing platform copies, and the
- *    embed is the sanctioned way to show a post somewhere else — it keeps
- *    attribution, and a post deleted upstream disappears here too rather than
- *    living on in a stale copy nobody remembers to remove.
+ * - `file` — served from this app's own origin, out of `public/training`.
+ *   Nothing third-party is contacted at all. This is the preferred kind, and
+ *   the right one for clips the agency owns outright.
  *
- * 2. Nothing loads from Meta until a person clicks. This app renders
- *    children's records; dropping a Meta script or iframe into it on page
- *    load would hand Meta referrer and usage signals from a PHI application,
- *    and Meta signs no BAA for embeds. Click-to-load keeps that boundary
- *    explicit and under the user's control. See `VideoCard`.
+ * - `instagram` — a permalink rendered through Instagram's embed endpoint,
+ *   for anything only published there. Kept **click-to-load**: this app shows
+ *   children's records, and an embed firing on page load would send a
+ *   referrer from a clinical application to a company that signs no BAA.
+ *
+ * Re-hosting is only appropriate because these are the agency's own
+ * recordings, supplied directly. Do not copy media down from Instagram to
+ * turn an `instagram` entry into a `file` one — the platform's terms do not
+ * permit redistributing its copies, and a local duplicate also outlives an
+ * upstream deletion nobody remembers to mirror.
  */
+
+export type VideoSource =
+  | {
+      kind: "file";
+      /** Path under /public, e.g. "/training/power-hour.mp4". */
+      src: string;
+      /** Poster frame shown before playback; no video bytes load without it. */
+      poster?: string;
+      /** Intrinsic size, so the card reserves space and the layout never jumps. */
+      width: number;
+      height: number;
+    }
+  | { kind: "instagram"; url: string };
 
 export interface TrainingVideo {
   /** Stable id, used as a React key and in audit metadata. */
@@ -24,46 +39,62 @@ export interface TrainingVideo {
   title: string;
   /** One or two lines on what the video covers and who it is for. */
   summary: string;
-  /** Public Instagram permalink — /p/<code>/ or /reel/<code>/. */
-  url: string;
   /** Grouping label shown on the card. */
   topic: string;
-  /** Roughly how long, as plain text. Optional; omitted when unknown. */
+  /** Roughly how long, as plain text. */
   duration?: string;
+  /** Omit while a slot is still waiting for content. */
+  source?: VideoSource;
 }
 
 /**
  * The library.
  *
- * DEMO CONTENT. Replace the three placeholder entries with real permalinks
- * from https://www.instagram.com/houstonstrongcpa — copy a post's "Copy link"
- * value straight in. Nothing else needs to change; the page is driven entirely
- * by this array and renders an explicit empty state when a url is blank.
+ * The two `file` entries are the agency's own recordings, transcoded from the
+ * supplied HEVC originals to H.264 so they play outside Safari. Their titles
+ * and summaries are written from the footage and should be corrected by
+ * whoever recorded them — they describe what is on screen, not necessarily
+ * what the narration teaches.
  */
 export const TRAINING_LIBRARY: TrainingVideo[] = [
   {
-    id: "tr-01",
-    title: "Placement day: what to have ready",
+    id: "tr-power-hour",
+    title: "Power Hour: mission, vision and values",
     summary:
-      "Walks a new caseworker through the paperwork and the conversations that have to happen on the day a child is placed.",
-    url: "",
+      "A team Power Hour session working through the agency's mission, vision, values and partnerships. Orientation material for anyone new.",
     topic: "Onboarding",
+    duration: "7 sec",
+    source: {
+      kind: "file",
+      src: "/training/power-hour.mp4",
+      poster: "/training/power-hour.jpg",
+      width: 720,
+      height: 1058,
+    },
   },
   {
-    id: "tr-02",
-    title: "Documenting a home visit",
+    id: "tr-service-plan-goals",
+    title: "Service plan goals and topic areas",
     summary:
-      "What a complete visit note looks like, and the fields that most often send a submission back for rework.",
-    url: "",
-    topic: "Documentation",
+      "Walks the service plan goal areas — educational, medical, recreational and social — and how each maps to a topic on the plan.",
+    topic: "Case planning",
+    duration: "9 sec",
+    source: {
+      kind: "file",
+      src: "/training/service-plan-goals.mp4",
+      poster: "/training/service-plan-goals.jpg",
+      width: 720,
+      height: 1566,
+    },
   },
   {
     id: "tr-03",
-    title: "Reporting abuse or neglect",
+    title: "Documenting a home visit",
     summary:
-      "The mandatory-reporter obligation, the timeline it runs on, and who to notify inside the agency.",
-    url: "",
-    topic: "Compliance",
+      "What a complete visit note looks like, and the fields that most often send a submission back for rework.",
+    topic: "Documentation",
+    // No source yet — the third clip supplied was a byte-identical duplicate
+    // of the first, so this slot is still open.
   },
 ];
 
@@ -98,7 +129,13 @@ export function embedUrlFor(permalink: string): string | null {
   return `https://www.instagram.com/${m[1]}/${m[2]}/embed/`;
 }
 
-/** Entries with a usable permalink, in library order. */
+/** True when an entry has something a viewer can actually play. */
+export function isPlayable(v: TrainingVideo): boolean {
+  if (!v.source) return false;
+  return v.source.kind === "file" ? Boolean(v.source.src) : embedUrlFor(v.source.url) !== null;
+}
+
+/** Entries with a usable source, in library order. */
 export function playableVideos(library = TRAINING_LIBRARY): TrainingVideo[] {
-  return library.filter((v) => embedUrlFor(v.url) !== null);
+  return library.filter(isPlayable);
 }
