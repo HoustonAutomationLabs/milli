@@ -26,6 +26,7 @@ export default async function DashboardPage() {
   });
 
   const upcoming = upcomingItems(scoped, 8);
+  const trend = agencyTrend(data);
   const caseById = new Map(scoped.cases.map((c) => [c.id, c]));
 
   const heading =
@@ -70,13 +71,32 @@ export default async function DashboardPage() {
         {/* Trend — agency-level, CEO only (non-PHI aggregate). */}
         {can(user, "viewAgencyKpis") ? (
           <Card className="lg:col-span-2">
+            {/*
+              The period is derived, not asserted. This said "12 months" while
+              the export carried 8, and the caseload cross-tab only holds the
+              months the agency has recorded — so a hard-coded span is wrong
+              the moment the data is anything other than a full year.
+            */}
             <div className="mb-4 flex items-baseline justify-between">
-              <SectionTitle>Active cases · 12 months</SectionTitle>
+              <SectionTitle>
+                Active cases &middot; {trend.length} month{trend.length === 1 ? "" : "s"}
+              </SectionTitle>
               <span className="text-[13px] text-muted tnum">
-                {agencyTrend(data).at(-1)?.activeCases} now
+                {trend.at(-1)?.activeCases} in {trend.at(-1)?.month}
               </span>
             </div>
-            <TrendChart data={agencyTrend(data)} />
+            <TrendChart data={trend} />
+            {/*
+              The newest point is whatever the export captured, and exports are
+              taken mid-month. Without this the final month reads as a sudden
+              drop in caseload rather than an incomplete count — the kind of
+              thing an executive acts on.
+            */}
+            <p className="mt-3 text-[13px] leading-snug text-muted">
+              {trend[0]?.month} to {trend.at(-1)?.month}. The latest month is
+              counted up to the export date and may be incomplete, so a dip at the
+              right-hand end is not necessarily a fall in caseload.
+            </p>
           </Card>
         ) : (
           <Card className="lg:col-span-2">

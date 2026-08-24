@@ -298,15 +298,50 @@ export function triageBoard(
   };
 }
 
+export interface OnTimeSummary {
+  /** Share of all completed items finished on or before their due date. */
+  pct: number;
+  /** How many completed items that is measured over. */
+  sample: number;
+  /** First and last month in the series, e.g. "2026-01". */
+  from: string;
+  to: string;
+  /** The most recent month on its own, which may be a partial period. */
+  latestPct: number;
+  latestSample: number;
+}
+
 /**
- * The agency's most recent on-time completion rate.
+ * The agency's on-time completion rate across the whole series.
  *
  * The board deliberately carries this: the four tiers describe a backlog, but
- * the reason the backlog exists is that only ~41% of work is finished on
- * time. Triage moves items between tiers; it does not change that rate.
+ * the reason the backlog exists is that fewer than half of all obligations
+ * are finished on time. Triage moves items between tiers; it does not change
+ * that rate.
+ *
+ * Weighted across every month rather than read off the latest one. The most
+ * recent month is a partial period — the export is taken mid-month — so it
+ * carries the smallest sample and the most noise, and quoting it puts a
+ * figure on screen that disagrees with the audit and with every other
+ * document describing this agency. The month-to-month range is 36.6% to 48%;
+ * picking one end of that as the headline would be a choice, not a
+ * measurement.
  */
-export function latestOnTime(data: CaseworkDataset): { pct: number; sample: number } | null {
-  const last = data.onTime?.at(-1);
-  if (!last) return null;
-  return { pct: last.onTimePct, sample: last.sample };
+export function onTimeSummary(data: CaseworkDataset): OnTimeSummary | null {
+  const series = data.onTime ?? [];
+  if (!series.length) return null;
+
+  const sample = series.reduce((a, p) => a + p.sample, 0);
+  if (!sample) return null;
+  const onTimeItems = series.reduce((a, p) => a + (p.onTimePct / 100) * p.sample, 0);
+  const last = series[series.length - 1];
+
+  return {
+    pct: Math.round((onTimeItems / sample) * 1000) / 10,
+    sample,
+    from: series[0].month,
+    to: last.month,
+    latestPct: last.onTimePct,
+    latestSample: last.sample,
+  };
 }

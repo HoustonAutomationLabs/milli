@@ -4,7 +4,7 @@ import { can, scopeForUser } from "@/lib/rbac";
 import { recordAccess } from "@/lib/audit";
 import { getDataset } from "@/lib/zoho/client";
 import { scopeDataset } from "@/lib/metrics";
-import { TIER_ORDER, latestOnTime, triageBoard, type Tier, type TieredItem } from "@/lib/triage";
+import { TIER_ORDER, onTimeSummary, triageBoard, type Tier, type TieredItem } from "@/lib/triage";
 import { ABANDONED_AFTER_DAYS } from "@/lib/aging";
 import { Card, SectionTitle } from "@/components/ui";
 
@@ -85,7 +85,7 @@ export default async function MorningPage() {
   const scope = scopeForUser(user);
   const scoped = scopeDataset(data, scope);
   const board = triageBoard(data, scoped, { limit: 6 });
-  const onTime = latestOnTime(data);
+  const onTime = onTimeSummary(data);
 
   recordAccess({ id: user.id, role: user.role }, "view_morning_board", {
     meta: { cases: scoped.cases.length, backlog: board.backlogTotal },
@@ -128,7 +128,8 @@ export default async function MorningPage() {
             <>
               Completion is running{" "}
               <strong className="font-semibold text-ink tnum">{onTime.pct}% on time</strong> across{" "}
-              <span className="tnum">{onTime.sample}</span> recently completed items.
+              <span className="tnum">{onTime.sample.toLocaleString()}</span> completed items,{" "}
+              {onTime.from} to {onTime.to}.
             </>
           ) : (
             <>On-time completion is not loaded from the current data source.</>
@@ -237,6 +238,16 @@ export default async function MorningPage() {
             date. They are late, but not the caseworker&rsquo;s to finish, so they
             appear in tier 2 only.
           </li>
+          {onTime ? (
+            <li>
+              The on-time figure is weighted across every month in the export,
+              not read off the latest one. {onTime.to} on its own is{" "}
+              <span className="tnum">{onTime.latestPct}%</span> over{" "}
+              <span className="tnum">{onTime.latestSample}</span> items &mdash; the
+              smallest sample in the series, because the export is taken
+              mid-month. Treat a single month as noise.
+            </li>
+          ) : null}
           <li>
             Tier 4 is everything more than{" "}
             <span className="tnum">{ABANDONED_AFTER_DAYS}</span> days overdue. The
