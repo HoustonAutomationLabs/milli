@@ -124,8 +124,8 @@ Rejected (6), Scheduled (6), Event (1).
 
 This matters. **165 of the 997 past-due items are already Submitted** — finished
 work sitting with a supervisor for approval. Counting them as overdue overstates
-the backlog and shows staff as delinquent for work they completed. `stateFor()`
-now treats Submitted as satisfied. Netting them out:
+the backlog and shows staff as delinquent for work they completed. `classify()`
+(then named `stateFor()`) treats Submitted as satisfied. Netting them out:
 
 - Genuinely outstanding: **832**
 - Of which actionable (under a year): **590**
@@ -437,3 +437,166 @@ carries unpatched prototype-pollution and ReDoS advisories that _are_ reachable
 through parsing.
 
 Re-check on upgrade rather than treating this note as permanent.
+
+---
+
+## The morning board, and two defects it surfaced
+
+_2026-08-24. Building the four-tier morning triage board
+(`docs/morning-board.md`) required reconciling the dashboard's displayed
+figures against the numbers recorded above. They did not match, for two
+reasons — both in the dashboard, not the exports._
+
+### 1. The UI was showing roughly half the backlog it had loaded
+
+`scopeDataset()` filtered obligations by whether their subject joined to the
+52-row open-cases roster, and applied that filter to **every** role — including
+an agency-wide scope, which has no permission narrowing to do. The effect was
+that 1,627 of 2,766 obligations (59%) never reached the executive view:
+
+| Population | Count | Why it does not join |
+|---|---|---|
+| Home-subject tasks | 371 | Belong to a home, not a child. No case exists. |
+| Case tasks off the open roster | 1,256 | Client is not an *open* case — closed cases still carry open work. |
+
+So the dashboard reported ~634 overdue where this document records 1,556. The
+loader was right the whole time; the presentation layer discarded the
+difference and gave no indication it had.
+
+Permission filtering and join filtering are now separate concerns. Team and
+personal scopes still narrow through the case join — an obligation that joins
+to no case cannot be attributed to a worker, so it cannot be shown to one.
+Agency-wide scopes no longer inherit that join as though it were a permission,
+and the unattributable count is reported rather than silently absorbed.
+
+### 2. `Scheduled` and `Event` rows were being aged into the backlog
+
+`stateFor()` correctly treated the two calendar statuses as satisfied, but it
+expressed that only as a `state` of "ok" — a value indistinguishable from
+"settled work". Anything recomputing urgency from the due date, as a morning
+board must, had no way to know those rows were never date-driven obligations,
+and swept every past calendar entry into the overdue tiers.
+
+The status judgement is now recorded as `calendarOnly` at load. Whether a row
+is work that can be late is decided once, from its status; only *when* it is
+due is recomputed later. This was caught by reconciliation, not by review — the
+tiers were 14 items heavier than this document's figures, and the discrepancy
+was the only reason to look.
+
+### Reconciliation
+
+With both fixed, and the date pinned to 2026-08-22 to match this audit, the
+board reproduces every figure recorded above exactly:
+
+| Measure | Recorded here | Board |
+|---|---|---|
+| Distinct obligations | 2,766 | 2,766 |
+| Overdue | 1,556 | 1,556 |
+| — actionable (under a year) | 902 | 902 |
+| — abandoned (over a year) | 654 | 654 |
+| Due soon | 181 | 181 |
+
+### `needapproval_case` is now loaded
+
+It is the only export naming the approver (`Submit To`), so the approval
+queue's distribution — the finding that one person holds 51% of it — is
+unreachable without it. It is deduplicated against the Submitted rows already
+ingested from the task reports, keyed on subject + type; that key is coarser
+than the subject + type + due date used elsewhere, because this report carries
+no due date, and it is deliberately biased toward dropping a real row rather
+than inventing one. The count lands in `diagnostics.approvalsDeduplicated`.
+
+Verified against a synthetic export with the real headers: of 208 rows, 66
+merged into obligations already present and **tiers 1, 3 and 4 did not move**.
+Adding the approval queue does not inflate the backlog, which was the risk.
+
+No `needapproval_case` file exists in `data/demo`, so the public demo shows
+tier 2's count without its approver breakdown, and says so on the page rather
+than rendering an empty chart.
+
+---
+
+## De-identification failure — the `type` column
+
+_2026-08-24. Found while preparing the morning board for deployment. Recorded
+here in full because the corrective action depends on understanding the shape
+of the mistake, not just the instance._
+
+### What happened
+
+`npm run deidentify` scrubs the fields `schema.ts` declares sensitive. For the
+task reports that was `client`/`home`/`worker` and `description`. **The `type`
+column was declared as nothing and passed through untouched.**
+
+In this agency's data that column is not structural vocabulary. Certification
+and training items are named after the person they belong to:
+
+```
+SIDS Expires (<given>)
+Valid Drivers License Expires (<given> <surname>)
+Child Logs (<given>, <given>)              <- sibling groups
+```
+
+**55 distinct real given names across 170 rows of `pastdue_home`** survived
+de-identification, reached `data/demo`, and were committed to a **public**
+GitHub repository and served from a **public** Netlify demo with no password.
+They are foster parents and household members; the sibling-pair form names
+children.
+
+### Why the existing safeguards missed it
+
+Three separate things had to line up, and all three did.
+
+1. **Sensitivity is declared per field, and nobody declares a `type` column.**
+   It reads as an enum. In 6 of 10 reports it very nearly is.
+2. **`scrubText`'s backstops did not match the shape.** It catches
+   `Surname, Given` and `Ms. Surname` — the forms found in case notes. A bare
+   given name in parentheses matches neither.
+3. **The de-identifier's own output looked healthy.** It reports rows, people
+   and cells replaced. Those counts were all correct. They describe what it
+   scrubbed, and say nothing about what it never examined — which is precisely
+   where the failure was.
+
+The audit's earlier "free-text lesson" identified this class of bug: names
+appear in fields not classified as name fields. It recurred anyway, in a
+column that looked structural rather than free-form.
+
+### The fix
+
+- `type` declared as free text on all seven reports that carry one, including
+  the three that previously had no `sensitivity` block at all.
+- A parenthetical backstop in `scrubText`, holding back only recognisable task
+  vocabulary. A false positive corrupts a demo label; a false negative
+  publishes a child's name, so the bias is toward replacing.
+- The generic `Surname, Given` backstop is now anchored to skip parentheticals,
+  so a sibling pair stays a pair instead of being rewritten twice.
+- `synthGiven()` for contexts holding a first name alone — substituting a full
+  identity there would change the shape of the data as well as the name.
+- `scripts/repair-demo-type-column.ts` repaired the 170 committed labels in
+  place. The de-identifier could not be re-run: `buildPools` excludes every
+  name found in its input, so a second pass over already-scrubbed files
+  depletes the pool to nothing. That guard is correct; it just makes
+  re-scrubbing impossible by design.
+- **`npm run verify:deidentified`** — a fail-closed check over EVERY column of
+  every file, masked output, non-zero exit on any finding. This is the control
+  that was missing. The de-identifier verifies its own intentions; this
+  verifies the artefact.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| Canary names through the fixed scrubber | none survived, all three shapes |
+| Task vocabulary preserved | `(Medication Review)`, `(Quarterly)`, `(Home)` intact |
+| `verify:deidentified` over `data/demo` | PASS, 10 files |
+| Audit figures after repair | 2,766 / 1,556 / 902 / 654 / 181 — all unchanged |
+
+### Still outstanding
+
+Fixing the data forward does not unpublish it. The names remain in the public
+repository's **git history**, and GitHub keeps orphaned blobs reachable and
+cached even after a force-push. Removing them properly means rewriting history
+*and* asking GitHub Support to purge the cache — and assuming the data may
+already have been fetched. **The repository is still public.** That decision,
+and whether this needs to be reported to the agency under its breach
+procedures, sit with the exec team.

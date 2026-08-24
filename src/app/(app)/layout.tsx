@@ -10,6 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/login");
 
   const nav = [
+    { href: "/morning", label: "Morning board", show: true },
     { href: "/dashboard", label: "Overview", show: true },
     { href: "/caseload", label: "Caseload", show: true },
     { href: "/compliance", label: "Compliance", show: can(user, "viewComplianceRegister") },

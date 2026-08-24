@@ -139,7 +139,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       program: ["program"],
       description: ["description", "notes", "detail"],
     },
-    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
+    sensitivity: { names: ["client", "worker"], freeText: ["description", "type"] },
   },
 
   pastdue_home: {
@@ -155,7 +155,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       home: ["home", "household", "home name", "provider", "name"],
       description: ["description", "notes", "detail"],
     },
-    sensitivity: { names: ["home", "worker"], freeText: ["description"] },
+    sensitivity: { names: ["home", "worker"], freeText: ["description", "type"] },
   },
 
   inprocess: {
@@ -171,7 +171,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       client: ["client", "name", "child", "case name"],
       description: ["description", "notes"],
     },
-    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
+    sensitivity: { names: ["client", "worker"], freeText: ["description", "type"] },
   },
 
   completions: {
@@ -187,7 +187,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       program: ["program"],
       description: ["description", "notes"],
     },
-    sensitivity: { names: ["client", "worker"], freeText: ["description"] },
+    sensitivity: { names: ["client", "worker"], freeText: ["description", "type"] },
   },
 
   /**
@@ -337,6 +337,10 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       description: ["description", "notes", "detail"],
       program: ["program"],
     },
+    sensitivity: {
+      names: ["client", "worker", "approver"],
+      freeText: ["description", "type"],
+    },
   },
 
   /**
@@ -361,6 +365,10 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       reason: ["reason rejected", "reason", "rejection reason"],
       description: ["description", "notes", "detail"],
       program: ["program"],
+    },
+    sensitivity: {
+      names: ["client", "worker", "approver"],
+      freeText: ["description", "reason", "type"],
     },
   },
 
@@ -390,6 +398,10 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
       worker: ["worker", "entered by", "performed by", "performer"],
       description: ["description", "notes"],
       program: ["program"],
+    },
+    sensitivity: {
+      names: ["client", "worker"],
+      freeText: ["description", "type"],
     },
   },
 };

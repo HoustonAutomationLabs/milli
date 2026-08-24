@@ -36,6 +36,10 @@ wrong.** This was requested explicitly. Concretely:
    initials, or aggregates. `npm run inspect:export` masks by default.
 4. Real exports live in `./data/exports` and are gitignored. So is
    `.er-session.json`, which is an authenticated credential.
+5. **Run `npm run verify:deidentified -- <dir>` before publishing anything.**
+   It checks every column of every file and exits non-zero on any unscrubbed
+   name. The de-identifier's own report cannot catch this class of mistake —
+   it counts what it replaced, not what it never looked at.
 
 ## Project facts established so far
 
@@ -80,10 +84,35 @@ wrong.** This was requested explicitly. Concretely:
 - **Compliance Tracking is a matrix** — 52 cases × 76 obligation columns, not a
   row per task. Parsed by `MatrixReportSpec`, deliberately **not** loaded into
   the dashboard: it would quadruple every headline number. Exec decision first.
+- **The morning board is four tiers, cut by who acts next** — act today /
+  waiting on approval / due soon / needs a decision. See
+  `docs/morning-board.md`. Tiers 1, 3 and 4 partition the backlog and may be
+  added up; **tier 2 is a different population and must never be summed with
+  them.** Reconciles exactly to the audit at a pinned date: 902 / 654 / 181.
+- **`scopeDataset` was dropping 1,627 of 2,766 obligations for the CEO** — it
+  applied the case join to agency-wide scopes as though it were a permission
+  filter, so the UI showed roughly half the backlog the loader had measured.
+  Fixed. Team and personal scopes still narrow via the join, because an
+  obligation joining to no case cannot be attributed to a worker.
+- **`Scheduled` and `Event` rows carry dates but cannot be late.** Flagged
+  `calendarOnly` at load. Anything that ages items by due date must skip them
+  or every past calendar entry lands in the backlog.
+- **The task `type` column carries people's names.** Certification items are
+  named after the person: `SIDS Expires (<given>)`, `Child Logs (<given>,
+  <given>)` for sibling groups. It was declared sensitive in no report, so 55
+  real given names across 170 rows reached the public repo and the public
+  demo. `type` is now free text everywhere and the scrubber has a
+  parenthetical backstop. **Assume any column can contain a name until
+  checked.**
+- **Holder attribution never uses `Worker`.** Tier 2 is held by `Submit To`;
+  the other tiers by the case's assigned worker from the open-cases roster.
+  Items naming nobody are counted in totals but excluded from the ranking, and
+  the excluded count is shown.
 
 ## Commands
 
 ```bash
+npm run verify:deidentified -- ./data/demo # BEFORE publishing; exits 1 on a name
 npm run dev                                # mock data
 npm run export:er                          # pull reports from ExtendedReach
 npm run inspect:export -- ./data/exports   # reconcile columns; masked output
@@ -102,8 +131,21 @@ npm run build && npx tsc --noEmit          # before any push
   Still unverified — no export seen yet: `opencases`, `pastdue_home`,
   `inprocess`, `completions`, `caseload`, `ontime`, `openbeds`, `nextcourt`,
   `staffexp`.
-- `needapproval_case`, `rejected_case`, `reportscompleted` and
-  `compliance_case` parse but are **not wired into the dataset** — only
-  `pastdue_case`, `pastdue_home`, `inprocess`, `opencases` and `caseload` are.
+- `needapproval_case` **is now wired** — it is the only source of the approver
+  (`Submit To`) that tier 2 needs. Deduped against Submitted rows already
+  ingested from the task reports, keyed subject + type; the count lands in
+  `diagnostics.approvalsDeduplicated`. No such export exists in `data/demo`
+  yet, so the demo shows tier 2 without the approver breakdown and says so.
+  Verified against a synthetic export: 66 of 208 rows merged, and tiers 1/3/4
+  did not move.
+- `rejected_case`, `reportscompleted` and `compliance_case` parse but are
+  still **not wired into the dataset**.
+- The dev sign-in accounts are mock-specific, so under `DATA_SOURCE=exports`
+  the manager and staff roles scope to zero cases — their `caseworkerId`s do
+  not exist in the export-derived worker set. The demo is therefore only
+  meaningful signed in as CEO. Pre-existing; affects every page.
+- `npm run lint` cannot run — the repo has no ESLint config, so `next lint`
+  drops into its interactive setup. The gates that do work are
+  `npm run build` and `npx tsc --noEmit`.
 - Ask the vendor for a Case ID column. Names are the only join key today, and
   the data contains sibling groups.

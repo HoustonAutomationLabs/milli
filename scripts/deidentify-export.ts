@@ -100,6 +100,19 @@ const GIVEN = [
 const INITIALS = "ABCDEFGHIJKLMNPRSTVW".split("");
 
 /**
+ * Words that make a parenthetical task vocabulary rather than a person.
+ *
+ * Used only to hold back the parenthetical backstop below. The list is
+ * deliberately narrow: a false positive here corrupts a demo label, a false
+ * negative publishes a child's name, so anything not clearly recognisable as
+ * task vocabulary is replaced. That is why vehicle makes are absent — a label
+ * reading "Valid Vehicle Insurance Expires (<given name>)" is odd but safe,
+ * and guessing at every manufacturer is not a privacy control.
+ */
+const TASK_VOCAB =
+  /\b(review|plan|report|visit|assessment|treatment|quarterly|monthly|annual|initial|renewal|update|form|training|medication|service|care|home|case|court|medical|dental|physical|test|screen|log|notes?|prescribed|otc|parent|basic|none|other|type|level|hours?|days?|years?|ytf|aka)\b/i;
+
+/**
  * Pools with every name that occurs in the source data removed.
  *
  * Populated by `buildPools` before any assignment. Without this a pool name
@@ -174,6 +187,21 @@ function hashInt(s: string, salt: string): number {
  *
  * "Last, First Middle" keeps that shape; a plain "First Last" keeps that shape.
  */
+/**
+ * A synthetic *given* name, for places that hold a first name on its own.
+ *
+ * `synthName` always returns a full identity, which is wrong inside a label
+ * like "SIDS Expires (<name>)" — the source holds one given name there, and
+ * substituting "Given Surname-Surname" changes the shape of the data as well
+ * as the name. Drawn from the same pool and the same hash, so one real person
+ * maps to one synthetic person here too.
+ */
+function synthGiven(real: string): string {
+  const clean = real.trim();
+  if (!clean) return "";
+  return GIVEN_POOL[hashInt(clean, "giv") % GIVEN_POOL.length];
+}
+
 function synthName(real: string): string {
   const clean = real.trim();
   if (!clean) return "";
@@ -401,10 +429,35 @@ async function deidentify(file: string, outDir: string) {
         if (out.includes(flipped)) out = out.split(flipped).join(synthName(real));
       }
     }
+    // Backstop for the parenthetical form that task TYPE names use, which no
+    // other rule here catches: "SIDS Expires (<given>)", "Valid Drivers
+    // License Expires (<given> <surname>)", and the sibling-group shape
+    // "(<given>, <given>)". These people appear in no name column anywhere —
+    // they are household members and siblings named only inside the label —
+    // so the map cannot contain them and nothing replaced them.
+    //
+    // Held back only for recognisable task vocabulary. Everything else that
+    // reads as one to three capitalised words is replaced, because the cost of
+    // over-replacing is a slightly odd demo label and the cost of
+    // under-replacing is publishing a real name.
+    out = out.replace(/\(([^)]{2,60})\)/g, (whole: string, inner: string) => {
+      const t = inner.trim();
+      if (TASK_VOCAB.test(t)) return whole;
+      if (!/^[A-Z][a-z]+(?:,?\s+[A-Z][a-z]+){0,2}$/.test(t)) return whole;
+      // Preserve the comma shape: a sibling pair stays a pair.
+      const parts = t.split(",").map((x) => x.trim()).filter(Boolean);
+      if (parts.length > 1) return `(${parts.map((x) => synthGiven(x)).join(", ")})`;
+      return `(${synthGiven(t)})`;
+    });
+
     // Backstops for people mentioned only in prose, who therefore appear in no
     // name column anywhere and cannot be in the map: a "Surname, Given" shape,
     // and the "Ms. Surname" form that case notes use constantly.
-    out = out.replace(/\b[A-Z][a-z]{2,},\s+[A-Z][a-z]{2,}\b/g, (m) => synthName(m));
+    // Anchored to skip a parenthetical, which the rule above has already
+    // handled: without that, a sibling pair "(<given>, <given>)" is rewritten
+    // a second time into "Surname, Given" and stops looking like a pair. Both
+    // forms are de-identified; only the shape of the data would be lost.
+    out = out.replace(/(?<!\()\b[A-Z][a-z]{2,},\s+[A-Z][a-z]{2,}\b(?!\))/g, (m) => synthName(m));
     out = out.replace(
       /\b(Mr|Mrs|Ms|Miss|Dr)\.?\s+([A-Z][a-z]{2,})/g,
       (_m, title: string, surname: string) => `${title}. ${synthName(surname).split(/[\s,]/)[0]}`,
