@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { can, scopeForUser } from "@/lib/rbac";
+import { can } from "@/lib/rbac";
 import { recordAccess } from "@/lib/audit";
+import { boundWorkerNames, resolveScope } from "@/lib/demo-roles";
 import { getDataset } from "@/lib/zoho/client";
 import {
   agencyTrend,
@@ -18,7 +19,7 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const data = await getDataset();
-  const scope = scopeForUser(user);
+  const { scope, boundTo } = resolveScope(user, data);
   const scoped = scopeDataset(data, scope);
   const kpis = computeKpis(scoped);
   recordAccess({ id: user.id, role: user.role }, "view_dashboard", {

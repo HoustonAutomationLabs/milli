@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { can, scopeForUser } from "@/lib/rbac";
+import { can } from "@/lib/rbac";
 import { recordAccess } from "@/lib/audit";
+import { boundWorkerNames, resolveScope } from "@/lib/demo-roles";
 import { getDataset } from "@/lib/zoho/client";
 import { scopeDataset, upcomingItems } from "@/lib/metrics";
 import { Card, ComplianceBadge, KpiCard } from "@/components/ui";
@@ -17,7 +18,7 @@ export default async function CompliancePage() {
   }
 
   const data = await getDataset();
-  const scope = scopeForUser(user);
+  const { scope, boundTo } = resolveScope(user, data);
   const scoped = scopeDataset(data, scope);
   const items = upcomingItems(scoped, 100);
   const caseById = new Map(scoped.cases.map((c) => [c.id, c]));

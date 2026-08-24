@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { scopeForUser } from "@/lib/rbac";
 import { recordAccess } from "@/lib/audit";
+import { boundWorkerNames, resolveScope } from "@/lib/demo-roles";
 import { getDataset } from "@/lib/zoho/client";
 import { scopeDataset } from "@/lib/metrics";
 import { Card, ComplianceBadge } from "@/components/ui";
@@ -26,7 +26,7 @@ export default async function CaseloadPage() {
   if (!user) redirect("/login");
 
   const data = await getDataset();
-  const scope = scopeForUser(user);
+  const { scope, boundTo } = resolveScope(user, data);
   const scoped = scopeDataset(data, scope);
   const workerName = new Map(data.caseworkers.map((w) => [w.id, w.name]));
 

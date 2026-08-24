@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { can, scopeForUser } from "@/lib/rbac";
+import { can } from "@/lib/rbac";
 import { recordAccess } from "@/lib/audit";
+import { boundWorkerNames, resolveScope } from "@/lib/demo-roles";
 import { getDataset } from "@/lib/zoho/client";
 import { scopeDataset } from "@/lib/metrics";
 import { TIER_ORDER, onTimeSummary, triageBoard, type Tier, type TieredItem } from "@/lib/triage";
@@ -77,12 +78,28 @@ function ItemRow({ entry, caseLabel }: { entry: TieredItem; caseLabel: string })
   );
 }
 
+/**
+ * Says out loud that this demo account is standing in for real workers.
+ *
+ * Without it a viewer signed in as one of the sample accounts reasonably reads
+ * the caseload on screen as belonging to the name in the sidebar. It does not.
+ */
+function DemoBindingNote({ names }: { names: string[] }) {
+  return (
+    <p className="mt-2 text-[13px] text-muted">
+      Demo account &mdash; the sample sign-in has no caseload of its own in this
+      export, so it is showing the work of{" "}
+      <span className="text-ink-soft">{names.join(", ")}</span>.
+    </p>
+  );
+}
+
 export default async function MorningPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const data = await getDataset();
-  const scope = scopeForUser(user);
+  const { scope, boundTo } = resolveScope(user, data);
   const scoped = scopeDataset(data, scope);
   const board = triageBoard(data, scoped, { limit: 6 });
   const onTime = onTimeSummary(data);
@@ -112,6 +129,7 @@ export default async function MorningPage() {
           {board.backlogTotal === 1 ? "" : "s"} in your access between them, each
           counted once. Tier 2 is a separate queue and is not added in.
         </p>
+        {boundTo?.length ? <DemoBindingNote names={boundWorkerNames(boundTo, data)} /> : null}
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -180,10 +180,13 @@ wrong numbers" is always visible on the page, never silent.
   did not move.
 - `rejected_case`, `reportscompleted` and `compliance_case` parse but are
   still **not wired into the dataset**.
-- The dev sign-in accounts are mock-specific, so under `DATA_SOURCE=exports`
-  the manager and staff roles scope to zero cases — their `caseworkerId`s do
-  not exist in the export-derived worker set. The demo is therefore only
-  meaningful signed in as CEO. Pre-existing; affects every page.
+- The dev sign-in accounts are mock-specific (`cw-1`…`cw-8`, `t-north`), so
+  under `DATA_SOURCE=exports` they match no worker or team and every non-CEO
+  role scoped to zero. `src/lib/demo-roles.ts` now binds them to real workers
+  when — and only when — the signed-in account is one of `MOCK_USERS`. That
+  gate is self-limiting: a real IdP stops returning those accounts and the
+  binding becomes unreachable. **It widens scope, so delete the module with
+  the auth stub.** The UI names the workers an account was bound to.
 - `npm run lint` cannot run — the repo has no ESLint config, so `next lint`
   drops into its interactive setup. The gates that do work are
   `npm run build` and `npx tsc --noEmit`.
