@@ -50,11 +50,16 @@ export interface TrainingVideo {
 /**
  * The library.
  *
- * The two `file` entries are the agency's own recordings, transcoded from the
+ * All three entries are the agency's own recordings, transcoded from the
  * supplied HEVC originals to H.264 so they play outside Safari. Their titles
  * and summaries are written from the footage and should be corrected by
  * whoever recorded them — they describe what is on screen, not necessarily
  * what the narration teaches.
+ *
+ * Every clip was frame-checked before being committed: no children, no
+ * legible client paperwork, no names on screen. One was trimmed; see the note
+ * on that entry. Audio has NOT been checked — there is no transcription
+ * available here — so a spoken name remains unverified in all three.
  */
 export const TRAINING_LIBRARY: TrainingVideo[] = [
   {
@@ -88,13 +93,29 @@ export const TRAINING_LIBRARY: TrainingVideo[] = [
     },
   },
   {
-    id: "tr-03",
-    title: "Documenting a home visit",
+    id: "tr-stem-go-pro-day",
+    title: "STEM Go Pro Day and Future Force",
     summary:
-      "What a complete visit note looks like, and the fields that most often send a submission back for rework.",
-    topic: "Documentation",
-    // No source yet — the third clip supplied was a byte-identical duplicate
-    // of the first, so this slot is still open.
+      "An introduction to the agency's workforce-development side: the Future Force programme and its presence at TechFest Live's STEM Go Pro Day.",
+    topic: "Programs",
+    duration: "8 sec",
+    source: {
+      kind: "file",
+      // TRIMMED. The supplied recording ran 9.7s and closed on a young
+      // participant waving to camera, face clearly visible. Cut at 8.2s so it
+      // ends on the presenter instead.
+      //
+      // Not because the footage is sensitive in itself — it is already public
+      // on the agency's own account — but because the context changes its
+      // meaning. A minor's face inside a foster-care case-management demo
+      // invites the inference that they are a child in the agency's care, and
+      // a marketing release is not consent to appear in a product demo. The
+      // original is untouched; re-cut from it if consent is ever confirmed.
+      src: "/training/stem-go-pro-day.mp4",
+      poster: "/training/stem-go-pro-day.jpg",
+      width: 720,
+      height: 1004,
+    },
   },
 ];
 
