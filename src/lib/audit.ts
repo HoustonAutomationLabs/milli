@@ -16,6 +16,7 @@ export type AuditAction =
   | "logout"
   | "view_dashboard"
   | "view_morning_board"
+  | "view_training"
   | "view_caseload"
   | "view_case"
   | "view_compliance"

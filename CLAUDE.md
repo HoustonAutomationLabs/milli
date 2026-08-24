@@ -104,6 +104,27 @@ wrong.** This was requested explicitly. Concretely:
   demo. `type` is now free text everywhere and the scrubber has a
   parenthetical backstop. **Assume any column can contain a name until
   checked.**
+- **The training library is self-hosted where possible.** `/training` is open
+  to every role and carries no case data. Entries are either `file` (served
+  from `public/training`, nothing third-party contacted at all — preferred) or
+  `instagram` (a permalink, kept **click-to-load** so nothing reaches Meta
+  until a user presses play; an embed firing on page load would send a
+  referrer from a PHI app to a company that signs no BAA). `embedUrlFor()` is
+  an allowlist and is the only thing between the config and an arbitrary
+  framed origin; keep it strict if the library ever becomes data-driven.
+  **Never turn an `instagram` entry into a `file` one by downloading the
+  media** — that is redistributing a platform copy, and it outlives an
+  upstream deletion. Re-hosting is only right for recordings the agency
+  supplies directly, as these two were.
+- **Screen recordings get watched before they are published.** All three
+  training clips were frame-checked for children, faces and legible client
+  paperwork before being committed. Two were clean. The third closed on a
+  young participant waving to camera and was **trimmed from 9.7s to 8.2s** —
+  not because the footage is sensitive (it is public on the agency's own
+  account) but because a minor's face inside a foster-care casework demo
+  implies they are a child in care, and a marketing release is not consent to
+  appear in a product demo. Audio was NOT verifiable here — no transcription
+  available — so a spoken name remains unchecked in all three.
 - **Holder attribution never uses `Worker`.** Tier 2 is held by `Submit To`;
   the other tiers by the case's assigned worker from the open-cases roster.
   Items naming nobody are counted in totals but excluded from the ranking, and
