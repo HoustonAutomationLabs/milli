@@ -143,6 +143,25 @@ DATA_SOURCE=exports npm run dev            # real (or de-identified) data
 npm run build && npx tsc --noEmit          # before any push
 ```
 
+## Deploying the demo
+
+The Netlify site builds from `main` on push. Three things have each broken it
+once and are easy to re-break:
+
+- **`netlify.toml` `[build.environment]` does not reach the runtime.** The
+  Next server is a Netlify Function reading `process.env` per request. The
+  vars that decide what the site serves are the **site** environment
+  variables (`DATA_SOURCE=exports`, `ER_EXPORT_DIR=./data/demo`).
+- **`data/demo` only reaches the function via `outputFileTracingIncludes`**
+  in `next.config.mjs`, because the loader's path is a runtime value that
+  file tracing cannot follow.
+- **Linking the repo does not build what is already pushed.** Netlify builds
+  on the next push webhook; use "Trigger deploy" for anything earlier.
+
+If exports are unreachable the app degrades to synthetic data rather than
+failing, and the banner states which mode is live — so "the demo shows the
+wrong numbers" is always visible on the page, never silent.
+
 ## Still open
 
 - Authentication is stubbed. Production needs a real IdP and a HIPAA-eligible

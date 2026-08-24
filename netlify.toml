@@ -19,6 +19,22 @@
   command = "npm run build"
   publish = ".next"
 
+# NOTE: [build.environment] applies at BUILD time only.
+#
+# The Next.js server runs as a Netlify Function and reads process.env per
+# request, where these values are NOT present. Setting them here alone made
+# the deployed demo fall back to synthetic data for two days while appearing
+# correctly configured — 42 mock cases where the de-identified set has 52.
+#
+# The values below are kept because the build itself reads them, but the ones
+# that actually decide what the site serves are the SITE environment
+# variables, set under Site configuration -> Environment variables:
+#
+#   DATA_SOURCE   = exports
+#   ER_EXPORT_DIR = ./data/demo
+#
+# If those are ever removed the site does not break: it degrades to synthetic
+# data and the in-app banner says so. See src/lib/zoho/client.ts.
 [build.environment]
   NODE_VERSION = "22"
   # De-identified data only. Never point this at data/exports.
@@ -27,6 +43,12 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# The workbooks under data/demo are read at request time from a path given by
+# ER_EXPORT_DIR, so Next's file tracing cannot see the dependency and would
+# leave them out of the function bundle. next.config.mjs pulls them in via
+# outputFileTracingIncludes. Without it the site builds cleanly and then
+# serves synthetic data on every request.
 
 # Defence in depth: next.config.mjs already sets these, but a misconfigured
 # build should not silently drop them.
