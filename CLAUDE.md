@@ -104,6 +104,14 @@ wrong.** This was requested explicitly. Concretely:
   demo. `type` is now free text everywhere and the scrubber has a
   parenthetical backstop. **Assume any column can contain a name until
   checked.**
+- **The training library embeds, it does not re-host.** `/training` is open to
+  every role and carries no case data. Videos are Instagram permalinks
+  rendered through Instagram's own embed endpoint, **click-to-load** — nothing
+  contacts Meta until a user presses play, because an embed firing on page
+  load would send a referrer from a PHI app to a company that signs no BAA.
+  `embedUrlFor()` is an allowlist and is the only thing between the config and
+  an arbitrary framed origin; keep it strict if the library ever becomes
+  data-driven.
 - **Holder attribution never uses `Worker`.** Tier 2 is held by `Submit To`;
   the other tiers by the case's assigned worker from the open-cases roster.
   Items naming nobody are counted in totals but excluded from the ranking, and

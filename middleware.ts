@@ -7,7 +7,7 @@ import { AUTH_COOKIE_NAME } from "@/lib/auth";
  * verified server-side in `getCurrentUser()` (node crypto isn't available in
  * the edge runtime). Defense in depth, not the sole gate.
  */
-const PROTECTED = ["/dashboard", "/caseload", "/compliance"];
+const PROTECTED = ["/dashboard", "/morning", "/caseload", "/compliance", "/training"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -23,5 +23,11 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/caseload/:path*", "/compliance/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/morning/:path*",
+    "/caseload/:path*",
+    "/compliance/:path*",
+    "/training/:path*",
+  ],
 };
