@@ -65,6 +65,23 @@ async function newestExport(dir: string, slug: string): Promise<string | null> {
 }
 
 /**
+ * Is this directory actually readable as an export set?
+ *
+ * Cheap: one readdir, no parsing. Exists so the app can tell the difference
+ * between "configured for exports" and "exports are really there" — on a
+ * serverless host the second is not implied by the first, because the
+ * workbooks have to survive file tracing and land at a path that resolves
+ * from the function's working directory.
+ */
+export async function hasReadableExports(dir: string): Promise<boolean> {
+  try {
+    return (await readdir(dir)).some(isReadableExport);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Rows below the header, keyed by the spec's logical field names.
  *
  * Header location and column resolution both come from `schema.ts`, so the

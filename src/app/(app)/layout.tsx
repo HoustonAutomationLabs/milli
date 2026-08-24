@@ -3,11 +3,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { PERMISSIONS, can } from "@/lib/rbac";
 import { signOut } from "@/app/actions";
-import { dataSourceMode } from "@/lib/zoho/client";
+import { effectiveDataSourceMode } from "@/lib/zoho/client";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+
+  const activeMode = await effectiveDataSourceMode();
 
   const nav = [
     { href: "/morning", label: "Morning board", show: true },
@@ -61,11 +63,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex flex-col">
-        {dataSourceMode() === "mock" ? (
-          <div className="border-b border-line bg-warn-bg px-6 py-2 text-[13px] font-medium text-warn">
-            Demo mode — synthetic data. Connect the Zoho Analytics feed to show live records.
-          </div>
-        ) : null}
+        {/*
+          The banner states which data is on screen and that sign-in is not
+          real. Both matter to anyone being shown this: a synthetic figure and
+          a de-identified one carry very different weight, and neither should
+          be mistaken for a live record. The old copy pointed at the Zoho
+          Analytics feed, which the exec team declined and the system audit
+          found unnecessary — see docs/extendedreach-audit.md.
+        */}
+        <div className="border-b border-line bg-warn-bg px-6 py-2 text-[13px] font-medium text-warn">
+          {activeMode === "mock"
+            ? "Demo — synthetic data, not real records. Sign-in is stubbed; anyone with this link can view."
+            : "Demo — real figures on de-identified data: counts and dates are real, every name is synthetic. Sign-in is stubbed; anyone with this link can view."}
+        </div>
         <main className="flex-1 px-6 py-8 md:px-10">{children}</main>
       </div>
     </div>

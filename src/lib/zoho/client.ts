@@ -20,7 +20,7 @@
 
 import type { CaseworkDataset } from "./types";
 import { MOCK_DATASET } from "./mock";
-import { loadExportDataset } from "../extendedreach/exports";
+import { hasReadableExports, loadExportDataset } from "../extendedreach/exports";
 
 type Mode = "mock" | "exports" | "zoho";
 
@@ -102,10 +102,20 @@ export async function getDataset(): Promise<CaseworkDataset> {
       );
     }
     if (!dataset.cases.length) {
-      throw new Error(
-        `No cases loaded from ${dir}. Run scripts/export-extendedreach.mjs first, ` +
-          `or set DATA_SOURCE=mock for development.`,
+      // Degrade rather than throw. This used to be fatal, on the reasoning
+      // that an empty dashboard looks merely quiet rather than broken — but
+      // that reasoning assumed nobody could tell which mode was live. The
+      // banner now states it, so falling back is self-announcing: the page
+      // says "synthetic data" and the operator sees this in the log. On a
+      // stakeholder-facing demo a wrong-looking number beats a 500.
+      console.error(
+        `[datasource] DATA_SOURCE=exports but no cases loaded from ${dir}. ` +
+          `Falling back to synthetic data. On a serverless host this usually ` +
+          `means the workbooks were not bundled — see outputFileTracingIncludes ` +
+          `in next.config.mjs — or that ER_EXPORT_DIR does not resolve from the ` +
+          `function's working directory.`,
       );
+      return MOCK_DATASET;
     }
     return dataset;
   }
@@ -121,6 +131,21 @@ export async function getDataset(): Promise<CaseworkDataset> {
   return { teams, caseworkers, cases, compliance, trend };
 }
 
+/** What DATA_SOURCE asks for. Not necessarily what is serving. */
 export function dataSourceMode(): Mode {
   return mode();
+}
+
+/**
+ * The mode actually in effect, which is what the UI must state.
+ *
+ * "Configured for exports" does not imply the exports are reachable, and
+ * telling a viewer they are looking at real de-identified figures when they
+ * are looking at invented ones is the one thing this banner must never do.
+ */
+export async function effectiveDataSourceMode(): Promise<Mode> {
+  const configured = mode();
+  if (configured !== "exports") return configured;
+  const dir = process.env.ER_EXPORT_DIR ?? "./data/exports";
+  return (await hasReadableExports(dir)) ? "exports" : "mock";
 }
