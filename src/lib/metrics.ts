@@ -13,28 +13,61 @@ import type { CaseRecord, CaseworkDataset, ComplianceItem, TrendPoint } from "./
 export interface ScopedCases {
   cases: CaseRecord[];
   compliance: ComplianceItem[];
+  /**
+   * Obligations in scope that belong to no case on the open-cases roster.
+   *
+   * Agency-wide scopes only; always 0 for a team or personal scope, which
+   * cannot include what they cannot attribute. Reported so an executive total
+   * and the sum of the team totals are never mistaken for the same figure.
+   */
+  unattributed: number;
 }
 
-/** Reduce the dataset to just what the scope permits. */
+/**
+ * Reduce the dataset to just what the scope permits.
+ *
+ * Two different filters are at work and they must not be confused:
+ *
+ * - **Permission.** A manager sees their teams, a caseworker sees their own
+ *   caseload. Both are enforced by narrowing to the cases they may read and
+ *   then to those cases' obligations, because an obligation that joins to no
+ *   case cannot be shown to either without guessing whose it is.
+ *
+ * - **Joining.** An agency-wide scope has no permission filter to apply, so
+ *   it must not inherit the join as though it were one. It previously did,
+ *   and that silently withheld 1,627 of 2,766 obligations (59%) from the
+ *   executive view: 371 home-subject tasks, which belong to a home rather
+ *   than a child and can never join to a case, plus 1,256 case tasks whose
+ *   client is not on the *open*-cases roster — closed cases still carrying
+ *   open work. Those are real obligations; the audit counts them. Dropping
+ *   them made the dashboard report roughly half the backlog the same loader
+ *   had just measured.
+ */
 export function scopeDataset(data: CaseworkDataset, scope: DataScope): ScopedCases {
-  let cases = data.cases;
+  if (scope.allCases) {
+    const caseIds = new Set(data.cases.map((c) => c.id));
+    return {
+      cases: data.cases,
+      compliance: data.compliance,
+      unattributed: data.compliance.filter((i) => !caseIds.has(i.caseId)).length,
+    };
+  }
 
-  if (!scope.allCases) {
-    if (scope.caseworkerId) {
-      // Staff: only their own caseload.
-      cases = cases.filter((c) => c.caseworkerId === scope.caseworkerId);
-    } else if (scope.teamIds.length) {
-      // Manager: cases across their team(s).
-      const teams = new Set(scope.teamIds);
-      cases = cases.filter((c) => teams.has(c.teamId));
-    } else {
-      cases = [];
-    }
+  let cases: CaseRecord[];
+  if (scope.caseworkerId) {
+    // Staff: only their own caseload.
+    cases = data.cases.filter((c) => c.caseworkerId === scope.caseworkerId);
+  } else if (scope.teamIds.length) {
+    // Manager: cases across their team(s).
+    const teams = new Set(scope.teamIds);
+    cases = data.cases.filter((c) => teams.has(c.teamId));
+  } else {
+    cases = [];
   }
 
   const caseIds = new Set(cases.map((c) => c.id));
   const compliance = data.compliance.filter((i) => caseIds.has(i.caseId));
-  return { cases, compliance };
+  return { cases, compliance, unattributed: 0 };
 }
 
 export interface Kpis {

@@ -14,6 +14,7 @@ import type {
   Caseworker,
   ComplianceItem,
   ComplianceState,
+  OnTimePoint,
   Team,
   TrendPoint,
 } from "./types";
@@ -54,8 +55,13 @@ function seeded(seed: number) {
 
 const rnd = seeded(42);
 const pick = <T>(arr: T[]) => arr[Math.floor(rnd() * arr.length)];
+// Anchored to the real current date rather than a fixed one: the morning
+// board tiers items by how overdue they are today, so a hard-coded base would
+// slide every fixture into the "needs a decision" tier as months passed and
+// make the demo misrepresent what the board does.
 const daysFromNow = (d: number) => {
-  const dt = new Date("2026-08-18T00:00:00Z");
+  const now = new Date();
+  const dt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   dt.setUTCDate(dt.getUTCDate() + d);
   return dt.toISOString().slice(0, 10);
 };
@@ -69,6 +75,25 @@ const PLACEMENTS: CaseRecord["placementType"][] = [
 ];
 const FIRST = ["A.", "B.", "C.", "D.", "E.", "F.", "G.", "H.", "J.", "K.", "L.", "M."];
 const LAST = ["R.", "S.", "T.", "V.", "W.", "N.", "P.", "Q.", "Z."];
+
+/**
+ * Supervisors who approve submitted work.
+ *
+ * Weighted, not uniform. The real approval queue is held by 18 approvers with
+ * one holding 51% of it, and a fixture with an even spread would show the
+ * morning board's tier 2 working while hiding the concentration that is the
+ * entire reason that tier exists.
+ */
+const APPROVERS = [
+  "Priya Okafor",
+  "Priya Okafor",
+  "Priya Okafor",
+  "Priya Okafor",
+  "Priya Okafor",
+  "Marcus Bell",
+  "Marcus Bell",
+  "Dana Reyes",
+];
 
 const LABELS: Record<ComplianceItem["kind"], string> = {
   home_visit: "Monthly home visit",
@@ -98,11 +123,41 @@ for (let i = 0; i < 42; i++) {
     "case_plan",
   ];
   for (let k = 0; k < itemCount; k++) {
-    const offset = Math.floor(rnd() * 40) - 12; // -12..+27 days
+    const kind = kinds[(i + k) % kinds.length];
+    const roll = rnd();
+
+    // Roughly one obligation in six is finished work sitting with a
+    // supervisor. `state` stays "ok" for these, matching how the loader
+    // classifies a Submitted row: the caseworker has nothing left to do, so
+    // it is not their backlog — but it is still blocked, and the morning
+    // board's tier 2 is where it shows up.
+    if (roll < 0.16) {
+      compliance.push({
+        id: `${caseId}-c${k}`,
+        caseId,
+        kind,
+        label: LABELS[kind],
+        dueDate: daysFromNow(-Math.floor(rnd() * 45) - 1),
+        state: "ok",
+        awaitingApproval: true,
+        approver: APPROVERS[Math.floor(rnd() * APPROVERS.length)],
+        submittedOn: daysFromNow(-Math.floor(rnd() * 60) - 1),
+      });
+      continue;
+    }
+
+    // A long tail of records open since 2020-2023. The real export puts 31%
+    // of past-due items over a year old; without a few here the board's
+    // fourth tier renders empty and the demo implies the agency has no
+    // abandoned backlog.
+    const offset =
+      roll < 0.28
+        ? -(400 + Math.floor(rnd() * 1900)) // 1.1 to 6.3 years overdue
+        : Math.floor(rnd() * 40) - 12; // -12..+27 days
+
     const state: ComplianceState = offset < 0 ? "overdue" : offset <= 7 ? "due_soon" : "ok";
     if (state === "overdue") worst = "overdue";
     else if (state === "due_soon" && worst !== "overdue") worst = "due_soon";
-    const kind = kinds[(i + k) % kinds.length];
     compliance.push({
       id: `${caseId}-c${k}`,
       caseId,
@@ -140,10 +195,29 @@ const trend: TrendPoint[] = (() => {
   return out;
 })();
 
+/**
+ * On-time completion, month by month.
+ *
+ * Sits in the low 40s on purpose. The real agency runs 41.1% on time across
+ * 3,184 completed items, and the morning board states that figure next to the
+ * tier counts — a fixture in the 90s would let the demo tell a story the data
+ * does not support.
+ */
+const onTime: OnTimePoint[] = trend.map((t, idx) => {
+  const pct = 37 + Math.round(rnd() * 11);
+  return {
+    month: t.month,
+    onTimePct: pct,
+    sample: 260 + Math.floor(rnd() * 140),
+    avgDaysLate: Math.round((61 - idx * 4) * 10) / 10,
+  };
+});
+
 export const MOCK_DATASET: CaseworkDataset = {
   teams: TEAMS,
   caseworkers: CASEWORKERS,
   cases,
   compliance,
   trend,
+  onTime,
 };

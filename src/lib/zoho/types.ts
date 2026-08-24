@@ -35,6 +35,34 @@ export interface ComplianceItem {
   label: string;
   dueDate: string; // ISO date
   state: ComplianceState;
+
+  /**
+   * The work is done and sitting with a supervisor for approval.
+   *
+   * `state` stays "ok" for these on purpose: the caseworker has nothing left
+   * to do, so counting them as overdue would show staff as delinquent for
+   * work they completed (165 of 997 past-due case tasks, per the audit). But
+   * "ok" alone loses the fact that the item is *blocked*, which is the
+   * agency's harder bottleneck. This flag is what keeps it visible.
+   */
+  awaitingApproval?: boolean;
+  /** Who the submission is queued with. Present only when awaiting approval. */
+  approver?: string;
+  /** ISO date the work was submitted. Drives how long it has been waiting. */
+  submittedOn?: string;
+  /** Caseworker who performed the work, where the report names a performer. */
+  performedBy?: string;
+
+  /**
+   * A calendar entry rather than a date-driven obligation — ExtendedReach's
+   * `Scheduled` and `Event` statuses.
+   *
+   * It carries a date, so anything that tiers work by how overdue it is will
+   * happily sort it into a backlog unless told not to. Whether a row is an
+   * obligation at all is a fact about its status, decided once at load; only
+   * *when* it is due may be recomputed later.
+   */
+  calendarOnly?: boolean;
 }
 
 export interface CaseRecord {

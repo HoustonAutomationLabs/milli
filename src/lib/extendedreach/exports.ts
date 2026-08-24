@@ -33,6 +33,7 @@ import type {
   Team,
   TrendPoint,
 } from "../zoho/types";
+import { ABANDONED_AFTER_DAYS, daysOverdue } from "../aging";
 import { caseDisplayId, homeDisplayId, normaliseName, workerId } from "./identity";
 import { isReadableExport, readGrid, type Grid } from "./grid";
 import { REPORT_SPECS, findHeaderRow, type ReportSpec } from "./schema";
@@ -170,12 +171,10 @@ function toIso(value: string): string | null {
   return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
-/** Whole days between a due date and today; negative means still upcoming. */
-export function daysOverdue(dueIso: string, today = new Date()): number {
-  const due = new Date(`${dueIso}T00:00:00Z`);
-  const now = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  return Math.round((now.getTime() - due.getTime()) / 86_400_000);
-}
+// Date arithmetic and the age cutoffs now live in `lib/aging.ts` so the
+// morning triage board can share them without importing the workbook reader.
+// Re-exported here because the loader was their original home.
+export { ABANDONED_AFTER_DAYS, daysOverdue } from "../aging";
 
 /**
  * Classify an ExtendedReach task type into the dashboard's compliance kinds.
@@ -202,37 +201,38 @@ function classifyKind(type: string): ComplianceItem["kind"] {
  * sitting with a supervisor for approval — the caseworker has nothing left to
  * do. Counting those as overdue inflates the backlog by 165 items (of 997) and
  * would show staff as delinquent for work they completed.
+ *
+ * `state` therefore stays "ok" for a submission, exactly as before. What is
+ * new is that the classification no longer *forgets* the item was submitted:
+ * `awaitingApproval` carries it through so the morning board can show the
+ * approval queue as its own tier. Suppressing it from the backlog and losing
+ * it entirely were never the same requirement.
  */
-function stateFor(dueIso: string | null, statusText: string): ComplianceState {
+function classify(
+  dueIso: string | null,
+  statusText: string,
+): { state: ComplianceState; awaitingApproval: boolean; calendarOnly: boolean } {
   const status = statusText.trim().toLowerCase();
+  const base = { awaitingApproval: false, calendarOnly: false };
 
   // Done and awaiting approval — not the caseworker's outstanding work.
-  if (status === "submitted") return "ok";
+  if (status === "submitted") return { ...base, state: "ok", awaitingApproval: true };
 
   // Calendar entries, not date-driven obligations.
-  if (status === "scheduled" || status === "event") return "ok";
+  if (status === "scheduled" || status === "event") {
+    return { ...base, state: "ok", calendarOnly: true };
+  }
 
-  if (!dueIso) return "due_soon";
+  if (!dueIso) return { ...base, state: "due_soon" };
   const d = daysOverdue(dueIso);
-  if (d > 0) return "overdue";
-  if (d > -30) return "due_soon";
-  return "ok";
+  if (d > 0) return { ...base, state: "overdue" };
+  if (d > -30) return { ...base, state: "due_soon" };
+  return { ...base, state: "ok" };
 }
 
 // ---------------------------------------------------------------------------
 // Dataset assembly
 // ---------------------------------------------------------------------------
-
-/**
- * Age threshold, in days, beyond which an overdue item is treated as an
- * abandoned record rather than live work.
- *
- * The audit found 1,351 past-due items, roughly half of them open since
- * 2020-2023. Reporting that raw figure to an executive is misleading, so the
- * dataset carries both: everything is loaded, and `isAbandoned` marks the
- * aged tail. Confirm the cutoff with the exec team before it drives decisions.
- */
-export const ABANDONED_AFTER_DAYS = Number(process.env.ER_ABANDONED_AFTER_DAYS ?? 365);
 
 export interface ExportLoadResult {
   dataset: CaseworkDataset;
@@ -254,14 +254,16 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
     diagnostics[slug] = { found: grid.length > 0, rows: rows.length };
   };
 
-  const [gOpen, gPastCase, gPastHome, gInproc, gCaseload, gOnTime] = await Promise.all([
-    gridFor(dir, "opencases"),
-    gridFor(dir, "pastdue_case"),
-    gridFor(dir, "pastdue_home"),
-    gridFor(dir, "inprocess"),
-    gridFor(dir, "caseload"),
-    gridFor(dir, "ontime"),
-  ]);
+  const [gOpen, gPastCase, gPastHome, gInproc, gCaseload, gOnTime, gNeedApproval] =
+    await Promise.all([
+      gridFor(dir, "opencases"),
+      gridFor(dir, "pastdue_case"),
+      gridFor(dir, "pastdue_home"),
+      gridFor(dir, "inprocess"),
+      gridFor(dir, "caseload"),
+      gridFor(dir, "ontime"),
+      gridFor(dir, "needapproval_case"),
+    ]);
 
   // --- caseworkers and teams ------------------------------------------------
   // ExtendedReach has no team entity; teams are inferred from the case
@@ -322,6 +324,11 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
   // type and due date — and the first sighting wins.
   const compliance: ComplianceItem[] = [];
   const seenObligation = new Set<string>();
+  // Submissions already seen on a task report, keyed subject|type. The
+  // approval queue re-lists the same work, so this is what stops it being
+  // counted twice — and it holds the item itself so the approver can be
+  // attached to the row that already exists.
+  const submittedItems = new Map<string, ComplianceItem>();
   let seq = 0;
   let duplicatesSkipped = 0;
 
@@ -345,14 +352,22 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
       }
       seenObligation.add(obligationKey);
 
-      compliance.push({
+      const { state, awaitingApproval, calendarOnly } = classify(due, r.status ?? "");
+      const record: ComplianceItem = {
         id: `ci-${spec.slug}-${seq++}`,
         caseId: linked?.id ?? subjectId,
         kind: classifyKind(type),
         label: type || "Task",
         dueDate: due ?? "",
-        state: stateFor(due, r.status ?? ""),
-      });
+        state,
+        // The task reports know an item is submitted but not who it is queued
+        // with — they carry no approver column. `needapproval_case` supplies
+        // that below.
+        ...(awaitingApproval ? { awaitingApproval: true } : {}),
+        ...(calendarOnly ? { calendarOnly: true } : {}),
+      };
+      compliance.push(record);
+      if (awaitingApproval) submittedItems.set(`${linked?.id ?? subjectId}|${type}`, record);
     }
   };
 
@@ -364,6 +379,66 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
 
   if (duplicatesSkipped) {
     diagnostics.deduplicated = { found: true, rows: duplicatesSkipped };
+  }
+
+  // --- approval queue -------------------------------------------------------
+  //
+  // The task reports show that an item is Submitted; only this report shows
+  // WHO it is waiting on, and it is the whole queue rather than its past-due
+  // slice — 394 submissions against 18 approvers, one of whom holds 202.
+  // That distribution is the finding the morning board's tier 2 exists to
+  // surface, and it is unreachable from any other export.
+  //
+  // The overlap has to be handled or the same finished work is counted twice:
+  // every Submitted row already ingested above reappears here. This report
+  // carries no due date to key on, so the match is subject + type — coarser
+  // than the subject|type|due key used for the task reports, and deliberately
+  // biased toward dropping a real row rather than inventing one. The count is
+  // reported so the trade is measurable rather than assumed.
+  const approvalRows = rowsFor(gNeedApproval, REPORT_SPECS.needapproval_case);
+  note("needapproval_case", gNeedApproval, approvalRows);
+
+  let approvalsAlreadySeen = 0;
+  for (const r of approvalRows) {
+    const name = r.client ?? "";
+    const linked = caseByName.get(normaliseName(name));
+    const type = r.type ?? "";
+    const subjectId = linked?.id ?? caseDisplayId(name);
+    const performer = (r.worker ?? "").trim();
+    ensureWorker(performer);
+
+    const existing = submittedItems.get(`${subjectId}|${type}`);
+    if (existing) {
+      // Already ingested from a task report. Attach the approver to the row
+      // that is already there rather than adding a second one.
+      existing.approver = (r.approver ?? "").trim() || existing.approver;
+      existing.submittedOn = toIso(r.submittedOn ?? "") ?? existing.submittedOn;
+      if (performer) existing.performedBy = performer;
+      approvalsAlreadySeen++;
+      continue;
+    }
+
+    const record: ComplianceItem = {
+      id: `ci-approval-${seq++}`,
+      caseId: subjectId,
+      kind: classifyKind(type),
+      label: type || "Task",
+      // Every row here is Submitted by definition, so the caseworker's work
+      // is done: no due date drives it any more, and `state` stays "ok" for
+      // the same reason it does on a submitted task row.
+      dueDate: "",
+      state: "ok",
+      awaitingApproval: true,
+      approver: (r.approver ?? "").trim() || undefined,
+      submittedOn: toIso(r.submittedOn ?? "") ?? undefined,
+      performedBy: performer || undefined,
+    };
+    compliance.push(record);
+    submittedItems.set(`${subjectId}|${type}`, record);
+  }
+
+  if (approvalsAlreadySeen) {
+    diagnostics.approvalsDeduplicated = { found: true, rows: approvalsAlreadySeen };
   }
 
   // Roll the worst state on each case up onto the case record.

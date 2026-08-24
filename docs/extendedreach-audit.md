@@ -124,8 +124,8 @@ Rejected (6), Scheduled (6), Event (1).
 
 This matters. **165 of the 997 past-due items are already Submitted** — finished
 work sitting with a supervisor for approval. Counting them as overdue overstates
-the backlog and shows staff as delinquent for work they completed. `stateFor()`
-now treats Submitted as satisfied. Netting them out:
+the backlog and shows staff as delinquent for work they completed. `classify()`
+(then named `stateFor()`) treats Submitted as satisfied. Netting them out:
 
 - Genuinely outstanding: **832**
 - Of which actionable (under a year): **590**
@@ -437,3 +437,79 @@ carries unpatched prototype-pollution and ReDoS advisories that _are_ reachable
 through parsing.
 
 Re-check on upgrade rather than treating this note as permanent.
+
+---
+
+## The morning board, and two defects it surfaced
+
+_2026-08-24. Building the four-tier morning triage board
+(`docs/morning-board.md`) required reconciling the dashboard's displayed
+figures against the numbers recorded above. They did not match, for two
+reasons — both in the dashboard, not the exports._
+
+### 1. The UI was showing roughly half the backlog it had loaded
+
+`scopeDataset()` filtered obligations by whether their subject joined to the
+52-row open-cases roster, and applied that filter to **every** role — including
+an agency-wide scope, which has no permission narrowing to do. The effect was
+that 1,627 of 2,766 obligations (59%) never reached the executive view:
+
+| Population | Count | Why it does not join |
+|---|---|---|
+| Home-subject tasks | 371 | Belong to a home, not a child. No case exists. |
+| Case tasks off the open roster | 1,256 | Client is not an *open* case — closed cases still carry open work. |
+
+So the dashboard reported ~634 overdue where this document records 1,556. The
+loader was right the whole time; the presentation layer discarded the
+difference and gave no indication it had.
+
+Permission filtering and join filtering are now separate concerns. Team and
+personal scopes still narrow through the case join — an obligation that joins
+to no case cannot be attributed to a worker, so it cannot be shown to one.
+Agency-wide scopes no longer inherit that join as though it were a permission,
+and the unattributable count is reported rather than silently absorbed.
+
+### 2. `Scheduled` and `Event` rows were being aged into the backlog
+
+`stateFor()` correctly treated the two calendar statuses as satisfied, but it
+expressed that only as a `state` of "ok" — a value indistinguishable from
+"settled work". Anything recomputing urgency from the due date, as a morning
+board must, had no way to know those rows were never date-driven obligations,
+and swept every past calendar entry into the overdue tiers.
+
+The status judgement is now recorded as `calendarOnly` at load. Whether a row
+is work that can be late is decided once, from its status; only *when* it is
+due is recomputed later. This was caught by reconciliation, not by review — the
+tiers were 14 items heavier than this document's figures, and the discrepancy
+was the only reason to look.
+
+### Reconciliation
+
+With both fixed, and the date pinned to 2026-08-22 to match this audit, the
+board reproduces every figure recorded above exactly:
+
+| Measure | Recorded here | Board |
+|---|---|---|
+| Distinct obligations | 2,766 | 2,766 |
+| Overdue | 1,556 | 1,556 |
+| — actionable (under a year) | 902 | 902 |
+| — abandoned (over a year) | 654 | 654 |
+| Due soon | 181 | 181 |
+
+### `needapproval_case` is now loaded
+
+It is the only export naming the approver (`Submit To`), so the approval
+queue's distribution — the finding that one person holds 51% of it — is
+unreachable without it. It is deduplicated against the Submitted rows already
+ingested from the task reports, keyed on subject + type; that key is coarser
+than the subject + type + due date used elsewhere, because this report carries
+no due date, and it is deliberately biased toward dropping a real row rather
+than inventing one. The count lands in `diagnostics.approvalsDeduplicated`.
+
+Verified against a synthetic export with the real headers: of 208 rows, 66
+merged into obligations already present and **tiers 1, 3 and 4 did not move**.
+Adding the approval queue does not inflate the backlog, which was the risk.
+
+No `needapproval_case` file exists in `data/demo`, so the public demo shows
+tier 2's count without its approver breakdown, and says so on the page rather
+than rendering an empty chart.

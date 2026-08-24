@@ -3,12 +3,17 @@ import type { ComplianceState } from "@/lib/zoho/types";
 export function Card({
   children,
   className = "",
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
-    <div className={`rounded-2xl border border-line bg-surface p-5 shadow-sm ${className}`}>
+    <div
+      className={`rounded-2xl border border-line bg-surface p-5 shadow-sm ${className}`}
+      style={style}
+    >
       {children}
     </div>
   );

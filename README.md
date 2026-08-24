@@ -53,6 +53,7 @@ src/
   app/
     (app)/               # authenticated shell + pages
       layout.tsx         # sidebar, role-aware nav, demo-mode banner
+      morning/           # four-tier morning triage board (docs/morning-board.md)
       dashboard/         # role-routed overview (KPIs, trend, needs-attention)
       caseload/          # scoped case list
       compliance/        # compliance register (CEO + managers only)
@@ -64,6 +65,8 @@ src/
     auth.ts              # session cookie — DEV/MOCK, swap for a real IdP
     audit.ts             # PHI-access audit logging
     metrics.ts           # role-scoped aggregation over the dataset
+    triage.ts            # four-tier morning triage (act / approve / soon / decide)
+    aging.ts             # day arithmetic + abandonment and due-soon cutoffs
     extendedreach/
       schema.ts          # per-report field/header aliases (source of truth)
       exports.ts         # parses exported .xlsx workbooks -> CaseworkDataset
