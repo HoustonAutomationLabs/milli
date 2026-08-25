@@ -69,14 +69,19 @@ fail in materially different ways and must not be collapsed into one number.
 
 ### Tier 0 — non-responsive, rejected unread (12)
 
+> **REVISED 2026-08-25.** The paper/USB mechanics below are obsolete. TxDOT
+> moved procurement to an electronic portal; anything advertised after
+> 2020-12-15 is submitted through it. Tiers 1-4 are unaffected — they derive
+> from statute and administrative code, not delivery logistics.
+
 | # | Check |
 |---|---|
-| 0.1 | Received (not postmarked) before 1:00 p.m. CT on the deadline date |
-| 0.2 | Delivered by hand or mail; fax and email not accepted |
-| 0.3 | Both originals present — USB flash drive PDF and one paper copy |
-| 0.4 | Paper bound with binder clip or paper clip; no staples, no other binding |
-| 0.5 | USB labelled with prime legal name and solicitation number |
-| 0.6 | File naming exact: `<first 15 chars of legal name>_<last 6 digits>_Complete.pdf`, plus one file per attachment; each flattened |
+| 0.1 | Submitted before the deadline, to the minute. A submission is not made until **finalised** in the portal — uploaded files in a draft are not a response |
+| 0.2 | Every requested-information upload slot filled (the electronic form of a missing attachment). Slots are set per solicitation |
+| 0.3 | File types, sizes and counts within portal limits — verify per solicitation |
+| 0.4 | ~~Paper bound with clip, no staples~~ **superseded** |
+| 0.5 | ~~USB labelled with firm name and solicitation number~~ **superseded** |
+| 0.6 | File naming convention — **verify**. 2018 rule was `<first 15 chars of legal name>_<last 6 digits>_Complete.pdf`; portals commonly keep a naming rule but TxDOT's current one must be read from a live solicitation |
 | 0.7 | Only the listed attachments, in numerical order |
 | 0.8 | Cover page complete including PM signature (explicit in 3400) |
 | 0.9 | HSP present, current version, signed (state solicitations) |
@@ -190,3 +195,48 @@ and `&&` returns true.
 - **NLC frequency across typical pursuits** — 32% of one solicitation, 4% of
   the other. Decides whether the intake form needs the new field set (item 5
   above) before it can ship.
+
+---
+
+## 7. Where the source documents live (verified 2026-08-25)
+
+**Current solicitations are not on the URLs printed in the 2018 documents.**
+TxDOT moved procurement to the **TxDOT Procurement Portal** at
+`https://txdot.bonfirehub.com` — product now called Euna Procurement, formerly
+Bonfire, referred to in TxDOT's own material as **eSET** (electronic submittal
+and evaluation tool). All three names denote the same system. Everything
+advertised after **2020-12-15** is posted there. Open opportunities:
+`https://txdot.bonfirehub.com/portal/?tab=openOpportunities`
+
+**The Q&R Template is not a published standalone form.** It is an attachment
+inside each solicitation package, behind free vendor registration, and it is
+authored per solicitation because the questions vary with the contract. There
+is no single template to model — there is a family, and the modelling task is
+identifying what is stable across it.
+
+**PEPS advertises in four waves per fiscal year** (September, December, March,
+June) and publishes a **fiscal year procurement plan** ahead of them. That
+forward pipeline is a better trigger for a qualification check than reacting to
+a posting that carries a 14-21 day clock.
+
+### Data sources named in the solicitations (product intake dependencies)
+
+| Need | Source named in the RFQs |
+|---|---|
+| Firm precert status / Active list | TxDOT list of precertified firms |
+| **Per-person precert categories** | **CCIS database, Employee Precertification Categories query, by employee sequence number** — the source for check 2.5 |
+| Administrative qualification status | TxDOT administrative qualification list |
+| DBE certification + NAICS code | TUCP DBE Directory |
+| HUB certification | CPA CMBL / HUB directory, `mycpa.cpa.state.tx.us/tpasscmblsearch` |
+| Service code taxonomy | NIGP commodity book (goods/services); NAICS 541xxx for A/E |
+| Past performance scores | TxDOT provider evaluation database (internal — not vendor-facing) |
+
+### Verification limits
+
+`txdot.gov`, `dot.state.tx.us` and one third-party mirror are blocked by this
+session's egress policy, so TxDOT pages could not be read directly. The portal
+migration, the eSET/Euna/Bonfire naming, the post-2020-12-15 cutover and the
+four-wave cadence are corroborated across independent search results and one
+retrieved TxDOT-issued Bonfire instructions document. **Portal-specific
+mechanics in Tier 0 (0.2, 0.3, 0.6) are marked for verification against a live
+solicitation and must not be hard-coded until then.**
