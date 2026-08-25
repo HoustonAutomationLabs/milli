@@ -217,3 +217,24 @@ Incoming RFPs
 - https://supabase.com/docs/guides/database/postgres/custom-claims-and-role-based-access-control-rbac
 - https://supabase.com/docs/guides/auth/signing-keys
 - https://supabase.com/docs/guides/database/postgres/roles
+
+---
+
+## Amendment — 2026-08-25, after reading two PEPS solicitations
+
+Two TxDOT PEPS RFQs (601CT0000003362, 601CT0000003400) were analysed. See
+`docs/txdot-soq-gate-spec.md`. Corrections to this document:
+
+- **Q5 (page budget) was aimed at the wrong stage.** At the SOQ stage there is
+  no narrative document — the submission is five fillable forms and the
+  constraint is a form field's size, not a page count. The rendering-based
+  approach stands only for the short-list narrative.
+- **The 35/30/25/10 weighting appears in neither solicitation.** Both score
+  90% Q&R / 10% past performance. Do not budget against 35/30/25/10 until the
+  source document is identified.
+- **"The fillable forms are likely worth more than the AI layer" is now
+  settled, not a hypothesis.** At the SOQ stage the forms are the entire
+  submission.
+- **Product direction confirmed by the operator:** self-serve is the target;
+  the process will be run manually first, then automated. This is the
+  recommendation in section 4 — the manual checklist is the automation spec.
