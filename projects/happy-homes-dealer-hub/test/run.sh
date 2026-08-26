@@ -26,6 +26,13 @@ node ui.test.js
 STATUS=$?
 if [ $STATUS -eq 0 ]; then
   echo
+  echo "== orders page =="
+  node orders.test.js
+  STATUS=$?
+fi
+
+if [ $STATUS -eq 0 ]; then
+  echo
   echo "== embedded in an auto-sizing iframe =="
   node embed.test.js
   STATUS=$?

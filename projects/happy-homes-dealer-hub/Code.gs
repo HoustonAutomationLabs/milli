@@ -37,14 +37,25 @@
 
 var SPREADSHEET_ID = '1qaEdVMAqPukhfo13b6CyD2qzoWHdnO-gL2xY-BpjWWc';
 
+/**
+ * Orders live in their OWN spreadsheet, not alongside the inventory tabs.
+ * Keeping them apart means the orders sheet can be shared, filtered and
+ * worked in without exposing the inventory source, and a stray edit while
+ * working orders cannot corrupt the catalogue the portal reads.
+ */
+var ORDERS_SPREADSHEET_ID = '1W9cuKpZjR7eDgU9NJf_isiPDXIm2xgAxWYdMjBOakRE';
+
 /** Tabs to publish, in the order the portal should show them. */
 var TAB_NAMES = ['closeout specials', 'sectionals', 'new arrivals'];
 
 /** Cache the assembled payload for this many seconds (0 disables). */
 var CACHE_SECONDS = 300;
 
-/** Tab that submitted orders are appended to. Created on first order. */
+/** Tab inside the orders spreadsheet. Created on first order. */
 var ORDERS_TAB = 'orders';
+
+/** Allowed order statuses. The first is what a new order gets. */
+var ORDER_STATUSES = ['New', 'Confirmed', 'Shipped', 'Cancelled'];
 
 /**
  * Shared secret with the Netlify order function. If you change this, change
@@ -55,11 +66,21 @@ var ORDER_TOKEN = 'hh-dealer-portal-2026';
 
 var ORDER_HEADERS = ['Order Ref', 'Submitted At', 'Dealer', 'Contact', 'SKU',
                      'Product Name', 'Category', 'Qty', 'Dealer Price',
-                     'Line Total', 'Notes'];
+                     'Line Total', 'Notes', 'Status'];
+
+/** Column index (1-based) of Status, used when updating an order in place. */
+var STATUS_COL = 12;
 
 function doGet(e) {
   try {
     var params = (e && e.parameter) || {};
+
+    // The Orders page asks for ?mode=orders. Never cached — someone working
+    // orders needs to see a submission the moment it lands.
+    if (String(params.mode || '') === 'orders') {
+      return json(JSON.stringify(buildOrdersPayload()));
+    }
+
     var fresh = String(params.fresh || '') === '1';
     var cache = CacheService.getScriptCache();
     var cacheKey = 'hh-feed-v2';
@@ -171,6 +192,10 @@ function doPost(e) {
       return json(JSON.stringify({ ok: false, error: 'Unauthorized' }));
     }
 
+    if (payload.action === 'setStatus') {
+      return json(JSON.stringify(setOrderStatus(payload.reference, payload.status)));
+    }
+
     var items = payload.items;
     if (!items || !items.length) {
       return json(JSON.stringify({ ok: false, error: 'Order contains no items' }));
@@ -221,7 +246,8 @@ function appendOrder(payload) {
         payload.dealer || '', payload.contact || '',
         it.sku || '', it.name || '', it.category || '',
         qty, price, line,
-        i === 0 ? (payload.notes || '') : ''
+        i === 0 ? (payload.notes || '') : '',
+        ORDER_STATUSES[0]
       ]);
     }
 
@@ -236,7 +262,7 @@ function appendOrder(payload) {
 
 /** Return the orders tab, creating it with headers the first time. */
 function getOrdersSheet() {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var ss = SpreadsheetApp.openById(ORDERS_SPREADSHEET_ID);
   var sheet = findSheet(ss, ORDERS_TAB);
   if (!sheet) {
     sheet = ss.insertSheet(ORDERS_TAB);
@@ -258,6 +284,114 @@ function nextReference() {
   var day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
   var padded = ('0000' + n).slice(-4);
   return 'HH-' + day + '-' + padded;
+}
+
+/**
+ * Read the orders tab back, grouped one entry per order reference, newest
+ * first. This is what the Orders page in Assembly renders.
+ */
+function buildOrdersPayload() {
+  var sheet = getOrdersSheet();
+  var lastRow = sheet.getLastRow();
+  var orders = [];
+
+  if (lastRow >= 2) {
+    var values = sheet.getRange(2, 1, lastRow - 1, ORDER_HEADERS.length).getDisplayValues();
+    var byRef = {};
+
+    for (var r = 0; r < values.length; r++) {
+      var row = values[r];
+      var ref = String(row[0] || '').trim();
+      if (!ref) continue;
+
+      if (!byRef[ref]) {
+        byRef[ref] = {
+          reference: ref,
+          submittedAt: row[1] || '',
+          dealer: row[2] || '',
+          contact: row[3] || '',
+          notes: '',
+          status: row[11] || ORDER_STATUSES[0],
+          items: [],
+          lines: 0,
+          total: 0
+        };
+        orders.push(byRef[ref]);
+      }
+      var order = byRef[ref];
+      if (row[10]) order.notes = row[10];
+
+      var qty = Number(row[7]) || 0;
+      var price = row[8] === '' ? null : Number(String(row[8]).replace(/[^0-9.\-]/g, ''));
+      var line = row[9] === '' ? null : Number(String(row[9]).replace(/[^0-9.\-]/g, ''));
+
+      order.items.push({
+        sku: row[4] || '', name: row[5] || '', category: row[6] || '',
+        qty: qty, price: isNaN(price) ? null : price,
+        lineTotal: isNaN(line) ? null : line
+      });
+      order.lines += 1;
+      if (line && !isNaN(line)) order.total += line;
+    }
+  }
+
+  orders.reverse();   // newest first; rows are appended chronologically
+
+  return {
+    generatedAt: new Date().toISOString(),
+    statuses: ORDER_STATUSES,
+    count: orders.length,
+    orders: orders
+  };
+}
+
+/**
+ * Set the status on every row belonging to one order reference.
+ * Returns how many rows changed so a silent no-op cannot pass for success.
+ */
+function setOrderStatus(reference, status) {
+  reference = String(reference || '').trim();
+  status = String(status || '').trim();
+
+  if (!reference) return { ok: false, error: 'Missing order reference' };
+  if (ORDER_STATUSES.indexOf(status) === -1) {
+    return { ok: false, error: 'Unknown status: ' + status };
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = getOrdersSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { ok: false, error: 'No orders recorded yet' };
+
+    var refs = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+    var updated = 0;
+    for (var i = 0; i < refs.length; i++) {
+      if (String(refs[i][0]).trim() === reference) {
+        sheet.getRange(i + 2, STATUS_COL).setValue(status);
+        updated += 1;
+      }
+    }
+    if (!updated) return { ok: false, error: 'Order not found: ' + reference };
+    return { ok: true, reference: reference, status: status, rowsUpdated: updated };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Run this from the Apps Script editor (Run -> checkOrders) to see what the
+ * Orders page will show, without going through Netlify.
+ */
+function checkOrders() {
+  var payload = buildOrdersPayload();
+  Logger.log(payload.count + ' order(s) in ' + ORDERS_TAB);
+  payload.orders.forEach(function (o) {
+    Logger.log('  ' + o.reference + '  ' + o.status + '  ' + o.lines +
+               ' line(s)  $' + o.total.toFixed(2) + '  ' + o.dealer);
+  });
+  return payload.count;
 }
 
 /**

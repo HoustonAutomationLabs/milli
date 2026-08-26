@@ -1,4 +1,4 @@
-# Happy Homes Dealer Hub — Dealer Home (v5)
+# Happy Homes Dealer Hub (v6)
 
 Dealer-facing inventory portal for **Happy Homes Industries**, embedded in the
 Assembly workspace *Happy Homes Dealer Hub* (`tXaGLcAcp`) and demoed with the
@@ -9,10 +9,17 @@ horizontal sliders** — one row per category, four cards across on desktop,
 arrows and swipe to move along the row. Nothing expands into a wall of cards,
 so all three categories stay visible on one screen.
 
-**v5 adds two things:** the inventory feed now runs through a Netlify function,
-so the Apps Script URL no longer appears in the page source; and the order
-review actually **submits**, writing to an `orders` tab in the sheet and handing
-the dealer a reference number.
+**v5** put the inventory feed behind a Netlify function, so the Apps Script URL
+no longer appears in the page source, and made the order review actually
+**submit**.
+
+**v6 adds the other half: a place to work the orders.** Orders now live in
+their own spreadsheet — **`happy homes orders`**
+(`1W9cuKpZjR7eDgU9NJf_isiPDXIm2xgAxWYdMjBOakRE`) — not mixed in with the
+inventory tabs. A second page, `orders.html`, embeds in Assembly as its own
+**Orders** app: it lists submissions newest-first, expands to line items, and
+moves each order through **New → Confirmed → Shipped → Cancelled**, writing the
+status straight back to the sheet.
 
 ---
 
@@ -40,23 +47,24 @@ notify anyone; see §6.
 ## 2. Architecture
 
 ```
-Google Sheet "happy homes inventory"   3 inventory tabs + an "orders" tab
-        ^                                            |
-        | doPost appends order rows                  | doGet serves inventory
-        |                                            v
-   Apps Script web app  (Code.gs, deployed /exec, access: Anyone)
-        ^                                            |
-        | POST + shared token                        | JSON
-        |                                            v
-   Netlify functions   /api/order          /api/inventory
-        ^                                            |
-        | fetch()                                    | fetch()
-        |                                            v
-   index.html  (no dependencies, no build step, no CDN)
-        |
-        |  <iframe>
-        v
-   Assembly app "Dealer Home"  (embed install 860aec83-…)
+ "happy homes inventory"              "happy homes orders"
+  3 inventory tabs                     one "orders" tab
+        |                               ^            |
+        | doGet                         | doPost     | doGet?mode=orders
+        |                               | append     | + doPost setStatus
+        v                               |            v
+        +---- Apps Script web app (Code.gs, /exec, access: Anyone) ----+
+                    |                          |            |
+       /api/inventory        /api/order    /api/orders  /api/order-status
+                    |                          |            |
+            Netlify functions (server-side; hold the Apps Script URL + token)
+                    |                          |            |
+              index.html                      orders.html
+             "Dealer Home"                      "Orders"
+                    |                                |
+                    +--------- <iframe> -------------+
+                                   |
+                    Assembly workspace "Happy Homes Dealer Hub"
 ```
 
 **The Apps Script URL is never sent to the browser.** It lives only in
@@ -67,6 +75,26 @@ neither the Google endpoint nor that the data lives in Sheets at all.
 Netlify Functions are included on the **free** plan (125k requests/month), so
 this costs nothing to run. Note that Netlify's *password protection* is a paid
 feature and is not available on free.
+
+**Why orders live in a separate spreadsheet.** The orders sheet gets shared,
+filtered and edited by whoever is working the queue. Keeping it apart from the
+inventory tabs means a stray edit while working orders cannot corrupt the
+catalogue the portal reads, and the orders sheet can be handed to someone who
+should never see the inventory source.
+
+### The Orders page
+
+`orders.html` is the order desk. It shows counts by status and the open value,
+lists orders newest-first, expands to line items and the dealer's PO note, and
+offers one button per status. Changing a status posts to `/api/order-status`,
+which validates the value against the allowed list on both sides before
+Apps Script writes it — that endpoint is public, so the sheet must never take
+an arbitrary string as a status.
+
+It polls every 30 seconds, pausing while a status write is in flight and while
+the tab is hidden. That is what makes the two-screen demo work: submit in
+Dealer Home, and the order appears on the Orders page without touching
+anything.
 
 ### The feed contract
 
@@ -165,13 +193,18 @@ that only the Netlify function knows. It is `ORDER_TOKEN` in both
 `Code.gs` and `netlify/functions/shared.js` — if you change one, change the
 other and redeploy both, or every order will come back "Unauthorized".
 
-### 3c. The Assembly embed
+### 3c. The Assembly embeds
 
-Dealer Home is already an **embed**-type app install in the workspace, so this
-is a URL change, not a new install:
+Dealer Home is already an **embed**-type app install in the workspace, so that
+one is a URL change, not a new install. **Orders is a new app you have to
+create in the dashboard** — the Assembly API has no "create install" action
+(`installs` only exposes `create_connection`, and only for *manual*-type apps),
+so it cannot be scripted from here.
 
 1. Assembly dashboard → **Apps** → **Dealer Home** → edit.
 2. Set the embed URL to `https://dealerhappyhomes.netlify.app/`.
+2b. Add a new **embed** app named **Orders**, pointing at
+   `https://dealerhappyhomes.netlify.app/orders.html`.
 3. **Leave auto-size ON.** Assembly offers no fixed-pixel height field, and
    with auto-size off the frame renders narrow, which trips the page's own
    mobile breakpoint and shows the 2-up phone layout on a desktop.
@@ -242,6 +275,15 @@ server-side and **a caller-supplied `token` cannot override it**, a string qty
 is coerced to a number, a negative qty clamps to 1, an over-long SKU truncates,
 and a null price stays null rather than becoming `0`.
 
+**Orders page — 28 checks**: submits two real orders through the dealer portal
+and then works them. Covers the empty state, newest-first ordering, the status
+tiles and open value, expanding to line items, the dealer's PO note, moving an
+order to Confirmed, and — the one that matters — that the change **survives a
+full page reload and is reflected by `/api/orders`**, so a DOM-only update
+cannot pass for a save. Also asserts a rejected status change leaves the pill
+untouched and re-enables the buttons, and that the page has the same
+embed-shaped shell as the portal.
+
 **Browser — 49 checks**: exactly 4 cards across at 1440px and 2 at 390px;
 12 closeout cards sit on **one row** (measured — this is the "does not expand"
 requirement); arrows appear/hide at the ends and move the rail; sold-out cards
@@ -292,10 +334,15 @@ placeholder — that placeholder is also the genuine fallback for a dead image U
   HTML, so "signed in as On Demand Furniture & Mattress" is hard-coded. Assembly
   can pass the viewing client through — that is the next step for a multi-dealer
   demo (see below).
-- **Orders are recorded, not announced.** A submission lands in the sheet's
-  `orders` tab. Nobody is emailed. Add a notification (Make watching the tab, or
-  `MailApp` in `doPost`) before a real dealer relies on it, or orders will sit
-  unseen.
+- **Orders are recorded, not announced.** A submission lands in the orders
+  sheet and shows on the Orders page within 30 seconds — but only if someone is
+  looking at it. Nobody is emailed. Add a notification (Make watching the sheet,
+  or `MailApp` in `doPost`) before a real dealer relies on it.
+- **The Orders page shows every order to everyone who can open it.** There is no
+  per-dealer filtering, because dealer identity is still a constant (below). If
+  the Orders app is ever exposed to dealers rather than kept internal, one
+  dealer would see another's orders and pricing. Keep it internal until identity
+  is real.
 - **The dealer identity is still a constant.** Every submission is stamped
   `On Demand Furniture & Mattress` from `CONFIG.dealerName`, so with more than
   one dealer the `orders` tab cannot tell them apart. Passing the signed-in

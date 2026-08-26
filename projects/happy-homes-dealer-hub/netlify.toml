@@ -23,3 +23,15 @@
   from   = "/api/order"
   to     = "/.netlify/functions/order"
   status = 200
+
+# The Orders page (orders.html), embedded in Assembly as its own app.
+
+[[redirects]]
+  from   = "/api/orders"
+  to     = "/.netlify/functions/orders"
+  status = 200
+
+[[redirects]]
+  from   = "/api/order-status"
+  to     = "/.netlify/functions/order-status"
+  status = 200
