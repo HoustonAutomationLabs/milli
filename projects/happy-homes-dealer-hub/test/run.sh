@@ -24,6 +24,12 @@ sleep 1
 set +e
 node ui.test.js
 STATUS=$?
+if [ $STATUS -eq 0 ]; then
+  echo
+  echo "== embedded in an auto-sizing iframe =="
+  node embed.test.js
+  STATUS=$?
+fi
 set -e
 cleanup
 trap - EXIT

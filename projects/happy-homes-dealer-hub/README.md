@@ -172,15 +172,27 @@ is a URL change, not a new install:
 
 1. Assembly dashboard → **Apps** → **Dealer Home** → edit.
 2. Set the embed URL to `https://dealerhappyhomes.netlify.app/`.
-3. **Turn auto-size off / give the iframe a fixed height** (≥ 720px; 900px is
-   comfortable). The portal is built as a fixed-height app with its own
-   internal scrolling — that is what keeps the sticky header, the cart drawer
-   and the modals anchored correctly. In an auto-sized iframe they would
-   anchor to a very tall viewport and drift off-screen.
+3. **Leave auto-size ON.** Assembly offers no fixed-pixel height field, and
+   with auto-size off the frame renders narrow, which trips the page's own
+   mobile breakpoint and shows the 2-up phone layout on a desktop.
 
-The page also posts its height to the parent frame on load and resize, so if
-Assembly's auto-size listens for a `{type:'resize', height}` message it will
-still fit.
+Auto-size is the right setting here, and that is not an accident. The page is
+a **height-locked app shell** (`#app { height:100dvh; min-height:720px }`)
+rather than a tall flowing document, and `#app` is `position:relative`, so the
+drawer, modals and toast anchor to the shell rather than to the page. An
+auto-sizing host therefore measures 720px, sets the frame to 720px, and the
+next measurement returns 720px again — it settles on the first pass instead of
+collapsing or growing without bound.
+
+`test/embed.test.js` pins this down: it hosts the page in an iframe, runs six
+auto-size passes from a deliberately wrong 300px start, and asserts the height
+converges (`720 → 720 → 720 …`), that the desktop layout stays 4-across, and
+that the cart drawer and review modal both sit fully inside the frame. It also
+asserts the failure the setting protects against — a narrow frame really does
+produce the 2-up mobile layout.
+
+The page additionally posts its height to the parent on load and resize, so a
+host that listens for `{type:'resize', height}` gets the same answer.
 
 ---
 
