@@ -13,6 +13,11 @@ token.json
 *token*.json
 *.pem
 
+# The filled-in workflow file carries the agency's real portal URL and its
+# page structure. Only the .example version belongs in git.
+config/workflow.json
+config/workflow.draft.json
+
 # Browser profile — an authenticated session is a credential
 profile/
 user-data/

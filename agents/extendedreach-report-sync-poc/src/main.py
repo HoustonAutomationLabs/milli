@@ -5,11 +5,13 @@ One authorised, read-only workflow: open a report in an already-authenticated
 browser profile, export it, validate the file, and upload it to one Google
 Drive folder if it has not been uploaded already.
 
+    python -m src.main --setup-assist
     python -m src.main --validate-config
     python -m src.main --test-download-fixture
     python -m src.main --once --dry-run
     python -m src.main --once
     python -m src.main --schedule
+    python -m src.main --status
 
 Exit codes are meaningful so a scheduler can alert on them; see EXIT_* below.
 """
@@ -335,6 +337,113 @@ def _print_summary(record, cfg) -> None:
     print("-" * 60 + "\n")
 
 
+def cmd_setup_assist(args) -> int:
+    """Capture the report URL and candidate selectors, with you driving."""
+    try:
+        cfg = config_module.load(env_file=args.env_file)
+    except config_module.ConfigError as exc:
+        print(f"\n{exc}\n", file=sys.stderr)
+        return EXIT_CONFIG_INVALID
+
+    if not cfg.base_url or "TODO" in cfg.base_url:
+        print("\nSet EXTENDEDREACH_BASE_URL in .env first — the assistant "
+              "needs to know which portal to open.\n", file=sys.stderr)
+        return EXIT_CONFIG_INVALID
+
+    logging_utils.configure_extra_terms(cfg.redact_terms)
+    log = logging_utils.get_logger("er_sync", cfg.log_dir, verbose=args.verbose)
+
+    try:
+        from src.setup_assist import run_setup_assist
+    except ImportError:
+        print("\nPlaywright is not installed; run scripts/install_playwright.sh\n",
+              file=sys.stderr)
+        return EXIT_CONFIG_INVALID
+
+    project_root = Path(__file__).resolve().parent.parent
+    out_path = project_root / "config" / "workflow.draft.json"
+    try:
+        return run_setup_assist(cfg, log, out_path)
+    except KeyboardInterrupt:
+        print("\nCancelled. Nothing was written.\n")
+        return EXIT_OK
+    except Exception as exc:
+        log.error("Setup assistant failed (%s)", type(exc).__name__)
+        return EXIT_UNEXPECTED
+
+
+def cmd_status(args) -> int:
+    """Show recent runs, so a silently failing schedule is visible.
+
+    An empty Drive folder means either "nothing to upload" or "six failed
+    runs". Only the run log tells them apart, and nobody reads a JSON Lines
+    file by choice.
+    """
+    import json
+
+    try:
+        cfg = config_module.load(env_file=args.env_file)
+    except config_module.ConfigError as exc:
+        print(f"\n{exc}\n", file=sys.stderr)
+        return EXIT_CONFIG_INVALID
+
+    path = cfg.log_dir / "runs.jsonl"
+    if not path.exists():
+        print(f"\nNo runs recorded yet ({path} does not exist).")
+        print("That means the job has never run — not that it ran and found "
+              "nothing.\n")
+        return EXIT_OK
+
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    limit = max(1, args.limit)
+    recent = records[-limit:]
+
+    print(f"\nLast {len(recent)} run(s) of {len(records)} recorded\n")
+    print(f"  {'started':<20} {'status':<22} {'detail'}")
+    print(f"  {'-' * 20} {'-' * 22} {'-' * 34}")
+    for record in recent:
+        started = (record.get("started_at") or "")[:19].replace("T", " ")
+        status = record.get("status", "?")
+        if record.get("dry_run"):
+            status += " (dry)"
+        detail = record.get("error_category") or record.get("drive_file_id") or ""
+        print(f"  {started:<20} {status:<22} {detail}")
+
+    # A summary aimed at the question actually being asked: is it working?
+    last = recent[-1] if recent else {}
+    successes = sum(1 for r in records if r.get("status") == "success")
+    failures = [r for r in records if r.get("status") == "failed"]
+    human = [r for r in records
+             if r.get("status") == "requires_human_login"]
+
+    print()
+    if last.get("status") == "success":
+        print("  Last run succeeded.")
+    elif last.get("status") == "skipped":
+        print("  Last run was skipped — already uploaded, or another run held "
+              "the lock. Both are normal.")
+    elif last.get("status") == "requires_human_login":
+        print("  ACTION NEEDED: the saved session has expired.")
+        print("  Run  ./scripts/run_once.sh  once, headed, and sign in.")
+        print("  Until you do, the scheduled job will keep doing nothing.")
+    elif last.get("status") == "failed":
+        print(f"  ACTION NEEDED: the last run failed "
+              f"({last.get('error_category')}).")
+
+    print(f"\n  totals: {successes} success, {len(failures)} failed, "
+          f"{len(human)} needing sign-in\n")
+    return EXIT_OK
+
+
 def cmd_schedule(args) -> int:
     """Optional local schedule. The same workflow --once runs."""
     from apscheduler.schedulers.blocking import BlockingScheduler
@@ -390,6 +499,11 @@ def build_parser() -> argparse.ArgumentParser:
                          help="validate sample files without touching ExtendedReach")
     command.add_argument("--schedule", action="store_true",
                          help="run on the local APScheduler schedule")
+    command.add_argument("--setup-assist", action="store_true",
+                         help="open the portal and capture the report URL and "
+                              "selectors; you drive, it clicks nothing")
+    command.add_argument("--status", action="store_true",
+                         help="show recent runs and whether anything needs you")
 
     headed = parser.add_mutually_exclusive_group()
     headed.add_argument("--headed", dest="headed", action="store_true", default=True,
@@ -405,6 +519,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", default=None, help="path to a .env file")
     parser.add_argument("--cron", default=None,
                         help="crontab expression for --schedule (overrides .env)")
+    parser.add_argument("--limit", type=int, default=10,
+                        help="how many runs --status shows (default 10)")
     parser.add_argument("--verbose", action="store_true", help="debug logging")
     return parser
 
@@ -416,6 +532,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_validate_config(args)
     if args.test_download_fixture:
         return cmd_test_fixture(args)
+    if args.setup_assist:
+        return cmd_setup_assist(args)
+    if args.status:
+        return cmd_status(args)
     if args.schedule:
         return cmd_schedule(args)
     return cmd_once(args)

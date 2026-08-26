@@ -67,9 +67,31 @@ Edit both and replace every `TODO`. The values you need:
 | `workflow.json` | `auth.mfa_selectors` | The MFA code field, so the tool can recognise a challenge and stop |
 | `workflow.json` | `reports.<slug>.export` | The export control on the report page |
 
-To find a selector: open the page in Chrome, right-click the element,
-**Inspect**, then right-click the highlighted markup → **Copy** → **Copy
-selector**.
+#### Let the setup assistant find the selectors
+
+Rather than doing that by hand:
+
+```bash
+./.venv/bin/python -m src.main --setup-assist
+```
+
+It opens a browser and walks you through three steps: sign in, open the
+report you want, point at the export button. It **clicks nothing, downloads
+nothing and changes nothing** — it reads the page's structure and prints
+numbered candidates for you to choose from. It writes
+`config/workflow.draft.json`; review it, then:
+
+```bash
+cp config/workflow.draft.json config/workflow.json
+```
+
+If you would rather do it by hand: open the page in Chrome, right-click the
+element, **Inspect**, then right-click the highlighted markup → **Copy** →
+**Copy selector**.
+
+The MFA selector is the one the assistant usually cannot capture, because no
+challenge is on screen while you are signed in. Leave it as-is if you like —
+the run still stops safely on a challenge, just less specifically.
 
 The tool refuses to start if any working directory resolves inside this git
 repository. A browser profile is an authenticated session and a downloaded
@@ -171,6 +193,8 @@ python -m src.main --test-download-fixture    # validation only, no portal
 python -m src.main --once --dry-run           # everything except the upload
 python -m src.main --once                     # the full workflow
 python -m src.main --once --headless          # no window; needs a live session
+python -m src.main --setup-assist             # capture URL + selectors
+python -m src.main --status                   # recent runs; is it working?
 python -m src.main --schedule                 # local APScheduler loop
 python -m pytest                              # the test suite
 ```
@@ -195,9 +219,44 @@ rather than trying to sign in on its own.
 
 ## Scheduling
 
-See [`scripts/schedule_example.md`](scripts/schedule_example.md) for two
-launchd examples — 6 PM daily, and every two hours during business hours —
-and for why only one instance may ever run at a time.
+```bash
+./scripts/install_schedule.sh daily             # 6:00 PM every day
+./scripts/install_schedule.sh business-hours    # 8,10,12,2,4,6 Mon-Fri
+./scripts/install_schedule.sh --uninstall       # stop it
+```
+
+This writes the launchd `.plist` with your real paths, validates it and loads
+it. No XML editing.
+
+It refuses to install a schedule until the configuration validates **and** the
+job has succeeded at least once by hand. A timer on something that has never
+worked only automates the failure. `--force` overrides that if you have a
+reason.
+
+[`scripts/schedule_example.md`](scripts/schedule_example.md) has the same
+plists written out, for when you want to change the hours yourself, plus why
+only one instance may ever run at a time.
+
+### Two things a schedule cannot do for you
+
+**The Mac must be awake and you must be logged in.** launchd will not wake a
+sleeping Mac for a scheduled job. A missed run fires once at the next wake. If
+this has to be reliable, it needs a machine that stays on.
+
+**The portal session will expire.** The browser profile keeps you signed in
+for a while, but not forever. When it lapses, runs stop with
+`requires_human_login` and upload nothing — correctly, since the alternative
+would be automating sign-in. You then do one headed run and it resumes.
+
+That second one is the reason to check in weekly:
+
+```bash
+./.venv/bin/python -m src.main --status
+```
+
+It prints the recent runs and says in plain words whether anything needs you.
+An empty Drive folder on its own cannot tell you whether there was nothing to
+upload or six failed runs; this can.
 
 ---
 
