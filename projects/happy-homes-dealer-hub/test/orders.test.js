@@ -123,6 +123,35 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
      await page.$eval('.order.open [data-status="Shipped"]', e => !e.disabled));
   await page.unroute('**/api/order-status');
 
+  console.log('\nThe demo loop: Orders -> Dealer Home -> order -> back');
+  ok('order desk has a link back to Dealer Home', (await page.$('#toHome')) !== null);
+  await page.click('#toHome');
+  await page.waitForSelector('.rail-block .card', { timeout: 8000 });
+  ok('landing on Dealer Home shows the catalogue', (await page.$$('.rail-block')).length === 3,
+     (await page.$$('.rail-block')).length);
+  ok('Dealer Home has a link out to the order desk', (await page.$('#toOrders')) !== null);
+
+  await page.click('.rail-block .card .add:not([disabled])');
+  await page.waitForTimeout(200);
+  await page.click('#openCart'); await page.waitForTimeout(350);
+  await page.click('#reviewBtn'); await page.waitForTimeout(350);
+  await page.click('#submitBtn');
+  await page.waitForSelector('#reviewBody h3', { timeout: 8000 });
+  ok('confirmation offers the way back', (await page.textContent('#keepShoppingBtn')) === 'Back to catalogue',
+     await page.textContent('#keepShoppingBtn'));
+  await page.click('#keepShoppingBtn');
+  await page.waitForTimeout(350);
+  ok('back on the catalogue with the cart emptied',
+     (await page.$$('.rail-block')).length === 3 && (await page.textContent('#cartCount')) === '0',
+     await page.textContent('#cartCount'));
+
+  await page.click('#toOrders');
+  await page.waitForSelector('.order', { timeout: 8000 });
+  ok('the new order is waiting on the desk', (await page.$$('.order')).length >= 1,
+     (await page.$$('.order')).length);
+  ok('and it is flagged as needing action',
+     Number(await page.textContent('.tile.new .n')) >= 1, await page.textContent('.tile.new .n'));
+
   console.log('\nEmbed shape matches the dealer portal');
   const shell = await page.evaluate(() => {
     const de = document.documentElement;
