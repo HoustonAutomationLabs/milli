@@ -140,9 +140,21 @@ A dealer cannot add more units than `Inventory` — the `+` disables at the cap.
 ### 3a. The site (Netlify)
 
 > **This changed in v5.** The site is no longer a single file — it now ships
-> `index.html`, `netlify.toml` and `netlify/functions/`. Drag the **whole
-> folder**, not `index.html` on its own, or the two `/api/*` routes 404 and the
-> page will show "Could not load live inventory".
+> `index.html`, `orders.html`, `netlify.toml` and `netlify/functions/`. Drag the
+> **whole folder**, not `index.html` on its own, or the `/api/*` routes 404 and
+> the page shows "Could not load live inventory".
+>
+> **If you deploy a zip instead of a folder, the zip must be flat.** Netlify
+> makes the archive root the site root, so a zip built from the *folder*
+> (`hh-deploy/index.html …`) publishes everything one level down: `/` returns
+> **Page not found**, `netlify.toml` is never read, and the functions never
+> deploy. Build it from *inside* the folder so `index.html` and `netlify.toml`
+> sit at the top level of the archive.
+>
+> The deploy summary tells you which happened. A good deploy reports redirect
+> rules processed and functions deployed; the broken one reports
+> **"No redirect rules processed"** and **"No functions deployed"**, and
+> `available_functions` comes back empty.
 
 The live project is **`dealerhappyhomes`** (`dealerhappyhomes.netlify.app`,
 site id `f8cd37c9-2d47-46a1-8051-2db58b38a7ae`). It is a drag-and-drop
