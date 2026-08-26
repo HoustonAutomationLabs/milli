@@ -97,6 +97,15 @@ The tool refuses to start if any working directory resolves inside this git
 repository. A browser profile is an authenticated session and a downloaded
 report is PHI; neither may be one `git add -A` away from being published.
 
+### Lost? Ask what to do next
+
+```bash
+./.venv/bin/python -m src.main --doctor
+```
+
+It prints a nine-point setup checklist showing what is done, what is not, and
+**one** command to run next. Run it any time you are unsure where you are.
+
 ### Check the configuration
 
 ```bash
@@ -193,6 +202,7 @@ python -m src.main --test-download-fixture    # validation only, no portal
 python -m src.main --once --dry-run           # everything except the upload
 python -m src.main --once                     # the full workflow
 python -m src.main --once --headless          # no window; needs a live session
+python -m src.main --doctor                   # where am I? what's next?
 python -m src.main --setup-assist             # capture URL + selectors
 python -m src.main --status                   # recent runs; is it working?
 python -m src.main --schedule                 # local APScheduler loop

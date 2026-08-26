@@ -5,6 +5,7 @@ One authorised, read-only workflow: open a report in an already-authenticated
 browser profile, export it, validate the file, and upload it to one Google
 Drive folder if it has not been uploaded already.
 
+    python -m src.main --doctor
     python -m src.main --setup-assist
     python -m src.main --validate-config
     python -m src.main --test-download-fixture
@@ -337,6 +338,12 @@ def _print_summary(record, cfg) -> None:
     print("-" * 60 + "\n")
 
 
+def cmd_doctor(args) -> int:
+    """Where am I in setup, and what is the one next command?"""
+    from src.doctor import run_doctor
+    return run_doctor(env_file=args.env_file)
+
+
 def cmd_setup_assist(args) -> int:
     """Capture the report URL and candidate selectors, with you driving."""
     try:
@@ -504,6 +511,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "selectors; you drive, it clicks nothing")
     command.add_argument("--status", action="store_true",
                          help="show recent runs and whether anything needs you")
+    command.add_argument("--doctor", action="store_true",
+                         help="show the setup checklist and the one next command")
 
     headed = parser.add_mutually_exclusive_group()
     headed.add_argument("--headed", dest="headed", action="store_true", default=True,
@@ -532,6 +541,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_validate_config(args)
     if args.test_download_fixture:
         return cmd_test_fixture(args)
+    if args.doctor:
+        return cmd_doctor(args)
     if args.setup_assist:
         return cmd_setup_assist(args)
     if args.status:

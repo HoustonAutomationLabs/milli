@@ -189,6 +189,19 @@ def run_setup_assist(cfg, log, out_path: Path) -> int:
     example = json.loads(
         (out_path.parent / "workflow.example.json").read_text(encoding="utf-8"))
 
+    # The example's "$comment" blocks explain how to fill each field in. Once
+    # the fields are filled they are just noise, and they contain the word
+    # TODO, which would make the setup checklist read as permanently unfinished.
+    def strip_comments(node):
+        if isinstance(node, dict):
+            return {k: strip_comments(v) for k, v in node.items()
+                    if not k.startswith("$")}
+        if isinstance(node, list):
+            return [strip_comments(v) for v in node]
+        return node
+
+    example = strip_comments(example)
+
     example["auth"]["authenticated_selector"] = auth_selector or \
         "TODO_CSS_SELECTOR_VISIBLE_ONLY_WHEN_SIGNED_IN"
     if mfa_candidates:
