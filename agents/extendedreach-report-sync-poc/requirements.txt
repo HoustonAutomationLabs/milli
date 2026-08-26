@@ -1,0 +1,21 @@
+# extendedreach-report-sync-poc — Python 3.11+
+#
+# Floors rather than exact pins: a hard pin here would age into a version
+# whose bundled Chromium no longer matches what `playwright install` fetches,
+# which fails at launch with a confusing message. Upper bounds keep a major
+# release from changing behaviour underneath a scheduled job.
+#
+# To freeze a known-good set for production:  pip freeze > requirements.lock
+
+playwright>=1.48,<2
+
+google-api-python-client>=2.140,<3
+google-auth>=2.35,<3
+google-auth-oauthlib>=1.2,<2
+google-auth-httplib2>=0.2,<1
+
+python-dotenv>=1.0,<2
+APScheduler>=3.10,<4
+openpyxl>=3.1,<4
+
+pytest>=8.3

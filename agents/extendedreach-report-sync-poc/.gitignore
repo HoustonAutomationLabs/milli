@@ -1,0 +1,48 @@
+# extendedreach-report-sync-poc
+#
+# Nothing in this list may ever reach git. The reports this tool downloads
+# contain children's PHI: names, dates of birth, SSNs, Medicaid numbers.
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+credentials.json
+client_secret*.json
+token.json
+*token*.json
+*.pem
+
+# Browser profile — an authenticated session is a credential
+profile/
+user-data/
+*.profile/
+
+# Downloaded reports and anything derived from them
+downloads/
+work/
+reports/
+*.xlsx
+*.xls
+*.csv
+*.pdf
+
+# Operational logs and diagnostics
+logs/
+*.log
+*.jsonl
+
+# Screenshots may show case data
+screenshots/
+*.png
+*.jpg
+*.jpeg
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+*.egg-info/

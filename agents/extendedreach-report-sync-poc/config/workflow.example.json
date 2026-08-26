@@ -1,0 +1,120 @@
+{
+  "$comment": [
+    "Copy this file to config/workflow.json and replace every TODO_ value.",
+    "Nothing here is a real ExtendedReach selector. The operator supplies them",
+    "from the authorised account, using the browser's inspector.",
+    "",
+    "This POC implements exactly ONE report. `reports` is a map so more can be",
+    "added later, but the tool refuses to run if more than one is enabled."
+  ],
+
+  "version": 1,
+
+  "auth": {
+    "$comment": [
+      "The authenticated check is deterministic and reads no page text: it",
+      "asks whether a specific element exists. Prefer something that only",
+      "appears when signed in, e.g. a sign-out link or the account menu."
+    ],
+    "authenticated_selector": "TODO_CSS_SELECTOR_VISIBLE_ONLY_WHEN_SIGNED_IN",
+    "login_form_selector": "TODO_CSS_SELECTOR_ON_THE_LOGIN_PAGE",
+
+    "$comment_mfa": [
+      "If any of these match, the run stops and returns requires_human_login.",
+      "The tool never fills, clicks, solves or bypasses them."
+    ],
+    "mfa_selectors": [
+      "TODO_CSS_SELECTOR_FOR_MFA_CODE_FIELD"
+    ],
+    "captcha_selectors": [
+      "iframe[title*='recaptcha' i]",
+      "iframe[src*='hcaptcha' i]",
+      "TODO_ANY_OTHER_CHALLENGE_SELECTOR"
+    ]
+  },
+
+  "safety": {
+    "$comment": [
+      "Read-only guards. url_denylist_substrings blocks navigation to any URL",
+      "that looks like a write action; if the portal uses different words for",
+      "these, add them. screenshot_safe_url_substrings is the ONLY set of",
+      "pages a failure screenshot may be taken on — keep report pages out of",
+      "it, because a screenshot of a report is a screenshot of case data."
+    ],
+    "url_denylist_substrings": [
+      "delete", "remove", "destroy", "edit", "update", "save", "submit",
+      "approve", "reject", "create", "new", "insert", "merge", "archive"
+    ],
+    "screenshot_safe_url_substrings": ["/login", "/signin", "/error", "/denied"]
+  },
+
+  "reports": {
+    "TODO_REPORT_SLUG": {
+      "enabled": true,
+      "description": "TODO(operator): which report this is, in plain words.",
+
+      "navigation": {
+        "$comment": [
+          "mode is 'direct_url' or 'steps'. direct_url is preferred: it is one",
+          "GET and cannot wander. Use 'steps' only if the report has no stable",
+          "URL. EXTENDEDREACH_REPORT_URL in .env overrides both."
+        ],
+        "mode": "direct_url",
+
+        "direct_url": "TODO_ABSOLUTE_OR_RELATIVE_REPORT_URL",
+
+        "steps": [
+          { "action": "click_link", "name": "TODO_TOP_MENU_ITEM" },
+          { "action": "click_link", "name": "TODO_SUBMENU_ITEM" },
+          { "action": "wait_for", "selector": "TODO_SELECTOR_PRESENT_ON_REPORT_PAGE" }
+        ]
+      },
+
+      "filters": [
+        {
+          "$comment": [
+            "Only predefined, non-sensitive filters. `value_env` names the .env",
+            "variable holding the value; values are rejected unless they match",
+            "^[A-Za-z0-9 _./:-]{1,64}$ so a person's name cannot be typed into",
+            "a portal field by this tool.",
+            "type is one of: select_option, fill, check, uncheck."
+          ],
+          "name": "date_range",
+          "type": "select_option",
+          "selector": "TODO_CSS_SELECTOR_FOR_THE_FILTER_CONTROL",
+          "value_env": "REPORT_FILTER_DATE_RANGE",
+          "required": false
+        }
+      ],
+
+      "apply_filters_control": {
+        "$comment": "Optional. Omit if filters apply on change.",
+        "selector": "TODO_CSS_SELECTOR_FOR_APPLY_OR_RUN_BUTTON",
+        "enabled": false
+      },
+
+      "export": {
+        "$comment": [
+          "The control that starts the download. Give a selector, or a role +",
+          "accessible name, or both — selector wins when present.",
+          "Note: in this agency's portal the control is labelled 'Excel' even",
+          "on reports that download as CSV. The extension is read from the",
+          "download itself, never assumed from this label."
+        ],
+        "selector": "TODO_CSS_SELECTOR_FOR_EXPORT_CONTROL",
+        "role": "link",
+        "name": "TODO_EXPORT_BUTTON_TEXT"
+      },
+
+      "validation": {
+        "$comment": [
+          "expected_extension is advisory: the allow-list in .env is what is",
+          "enforced. expected_csv_headers_env names the .env variable holding",
+          "the required header names."
+        ],
+        "expected_extension": "csv",
+        "expected_csv_headers_env": "EXPECTED_CSV_HEADERS"
+      }
+    }
+  }
+}
