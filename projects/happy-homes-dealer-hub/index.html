@@ -447,8 +447,8 @@ footer.foot{
           <circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M11 12h1v4h1"></path></svg>
         <div>
           <b>Demonstration build.</b> Inventory counts and stock statuses on this page are example data,
-          not a live warehouse feed. Adding items builds an order list you can review &mdash; nothing is
-          submitted to Happy Homes from this screen.
+          not a live warehouse feed. Submitted orders are recorded as requests &mdash; a Happy Homes
+          rep confirms pricing and availability before anything ships.
         </div>
       </div>
 
@@ -479,8 +479,8 @@ footer.foot{
       <div class="sum total"><span>Estimated total</span><span id="cartTotal">$0.00</span></div>
       <button class="primary" id="reviewBtn" disabled>Review order selections</button>
       <button class="ghost" id="clearCart">Clear list</button>
-      <p class="disclaim">Preview only &mdash; this confirms your selections. No order is placed
-        and nothing is sent to Happy Homes.</p>
+      <p class="disclaim">Review your selections before submitting. Submitting records an order
+        request &mdash; it is not a binding purchase order until Happy Homes confirms it.</p>
     </footer>
   </aside>
 
@@ -496,8 +496,9 @@ footer.foot{
       </header>
       <div class="body" id="reviewBody"></div>
       <footer>
-        <button class="ghost" data-close-modal>Keep shopping</button>
-        <button class="primary" id="printBtn">Print / save as PDF</button>
+        <button class="ghost" id="keepShoppingBtn" data-close-modal>Keep shopping</button>
+        <button class="ghost" id="printBtn">Print</button>
+        <button class="primary" id="submitBtn">Submit order request</button>
       </footer>
     </div>
   </div>
@@ -542,9 +543,13 @@ footer.foot{
    * CONFIG — the only block you should need to edit.
    * ------------------------------------------------------------------ */
   var CONFIG = {
-    // Apps Script web-app /exec URL that serves the Google Sheet as JSON.
-    feedUrl: "https://script.google.com/macros/s/AKfycbxYZ01poWvj6iCN18XnJ1P7GhbyfuCTzJzmqEkvwgPakHYm8H8-a0gFaNZcjBpI1XZ5Cw/exec",
+    // Same-origin endpoints served by the Netlify functions in
+    // netlify/functions/. The Apps Script URL lives only inside those
+    // functions, so it never reaches the browser or View Source.
+    feedUrl:  "/api/inventory",
+    orderUrl: "/api/order",
     dealerName: "On Demand Furniture & Mattress",
+    dealerContact: "",
     // Row order on Dealer Home. Anything not listed is appended in feed order.
     categoryOrder: ["Closeout Specials", "Sectionals", "New Arrivals"],
     // Sheet "Category" values that should collapse into one row heading.
@@ -981,7 +986,7 @@ footer.foot{
    * ------------------------------------------------------------------ */
   function orderPlainText(lines) {
     var when = new Date().toLocaleString();
-    var out = ["HAPPY HOMES - DEALER ORDER SELECTION (PREVIEW, NOT SUBMITTED)",
+    var out = ["HAPPY HOMES - DEALER ORDER REQUEST",
                "Dealer: " + CONFIG.dealerName, "Prepared: " + when, ""];
     lines.forEach(function (l) {
       out.push(l.qty + " x  " + l.it.sku + "  |  " + l.it.name +
@@ -1017,14 +1022,131 @@ footer.foot{
       "</tr></tfoot></table>" +
       (anyTbd ? '<p style="font-size:12px;color:var(--amber);margin:12px 0 0">' +
         "Some lines have no dealer price on file and are excluded from the estimated total.</p>" : "") +
+      '<label style="display:block;font-size:12px;color:var(--muted);margin:18px 0 6px">' +
+        "Your PO number or delivery note (optional)" +
+        '<input id="orderNotes" type="text" maxlength="200" ' +
+        'style="display:block;width:100%;margin-top:5px;padding:9px 11px;font:inherit;' +
+        'font-size:13px;border:1px solid var(--line-strong);border-radius:7px;color:var(--navy)">' +
+      "</label>" +
       '<p style="font-size:12px;color:var(--muted);margin:16px 0 8px">' +
-        "<b>This is a preview.</b> Nothing has been submitted to Happy Homes. " +
-        "Copy the text below into an email or purchase order to place it.</p>" +
+        "Submitting sends this request to the Happy Homes order desk. A rep confirms " +
+        "pricing and availability before anything ships. The summary below is yours to keep.</p>" +
       '<textarea class="ordertext" readonly>' + esc(orderPlainText(lines)) + "</textarea>";
+
+    var submit = $("#submitBtn");
+    submit.hidden = false;
+    submit.disabled = false;
+    submit.textContent = "Submit order request";
+    $("#keepShoppingBtn").textContent = "Keep shopping";
 
     $("#reviewModal").classList.add("open");
     var ta = $(".ordertext");
     if (ta) ta.addEventListener("focus", function () { this.select(); });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Submitting an order
+   * ------------------------------------------------------------------ */
+  function submitOrder() {
+    var lines = cartLines();
+    if (!lines.length) return;
+
+    var btn = $("#submitBtn");
+    btn.disabled = true;
+    btn.textContent = "Submitting\u2026";
+
+    var notesEl = $("#orderNotes");
+    // Built before the cart is cleared, so the receipt survives the reset.
+    var summaryText = orderPlainText(lines);
+    var payload = {
+      dealer: CONFIG.dealerName,
+      contact: CONFIG.dealerContact,
+      notes: notesEl ? notesEl.value : "",
+      items: lines.map(function (l) {
+        return {
+          sku: l.it.sku, name: l.it.name, category: l.it.group,
+          qty: l.qty, price: l.it.price
+        };
+      })
+    };
+
+    fetch(CONFIG.orderUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) {
+        return r.json()
+          .catch(function () { throw new Error("Server returned an unreadable response"); })
+          .then(function (body) { return { ok: r.ok, body: body }; });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.body.ok) {
+          throw new Error(res.body && res.body.error ? res.body.error : "Submission failed");
+        }
+        showOrderConfirmation(res.body, summaryText);
+        // Only clear once the order is safely recorded.
+        CART = {};
+        saveCart();
+        renderCart();
+        $$("[data-control]").forEach(function (host) {
+          var it = ALL[+host.getAttribute("data-control")];
+          if (it) host.innerHTML = controlHtml(it, stock(it));
+        });
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "Submit order request";
+        showSubmitError(err.message);
+      });
+  }
+
+  function showSubmitError(msg) {
+    var existing = $("#submitError");
+    if (existing) existing.remove();
+    var div = document.createElement("div");
+    div.id = "submitError";
+    div.style.cssText = "background:var(--red-bg);border:1px solid #f0d4d4;color:var(--red);" +
+      "border-radius:8px;padding:11px 13px;font-size:12.5px;margin:0 0 14px";
+    div.innerHTML = "<b>Could not submit.</b> " + esc(msg) +
+      "<br>Your order list has been kept &mdash; nothing was lost. Try again in a moment.";
+    $("#reviewBody").insertBefore(div, $("#reviewBody").firstChild);
+  }
+
+  function showOrderConfirmation(result, summaryText) {
+    $("#submitBtn").hidden = true;
+    $("#keepShoppingBtn").textContent = "Done";
+
+    $("#reviewBody").innerHTML =
+      '<div style="text-align:center;padding:6px 0 18px">' +
+        '<div style="width:46px;height:46px;border-radius:50%;background:var(--green-bg);' +
+          'display:flex;align-items:center;justify-content:center;margin:0 auto 14px">' +
+          '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" ' +
+          'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M20 6L9 17l-5-5"/></svg>' +
+        "</div>" +
+        '<h3 style="margin:0 0 6px;font-size:18px">Order request submitted</h3>' +
+        '<p style="margin:0;font-size:13px;color:var(--muted)">' +
+          "The Happy Homes order desk has it. Confirmation of pricing and " +
+          "availability follows before anything ships.</p>" +
+      "</div>" +
+      '<dl style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px;' +
+        'border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin:0">' +
+        '<dt style="color:var(--muted)">Reference</dt><dd style="margin:0;font-weight:700">' +
+          esc(result.reference || "\u2014") + "</dd>" +
+        '<dt style="color:var(--muted)">Line items</dt><dd style="margin:0;font-weight:600">' +
+          esc(String(result.lines == null ? "\u2014" : result.lines)) + "</dd>" +
+        '<dt style="color:var(--muted)">Estimated total</dt><dd style="margin:0;font-weight:600">' +
+          esc(money(Number(result.total)) || "\u2014") + "</dd>" +
+      "</dl>" +
+      '<p style="font-size:12px;color:var(--muted);margin:16px 0 8px">' +
+        "Keep this summary for your records &mdash; quote the reference in any follow-up.</p>" +
+      '<textarea class="ordertext" readonly>' +
+        esc(summaryText + "\n\nReference: " + (result.reference || "")) + "</textarea>";
+
+    var ta = $(".ordertext");
+    if (ta) ta.addEventListener("focus", function () { this.select(); });
+    toast("Order " + (result.reference || "") + " submitted");
   }
 
   function showQuickView(idx) {
@@ -1135,6 +1257,7 @@ footer.foot{
 
     $("#reviewBtn").addEventListener("click", function () { openCart(false); showReview(); });
     $("#printBtn").addEventListener("click", function () { window.print(); });
+    $("#submitBtn").addEventListener("click", submitOrder);
 
     $("#qvAdd").addEventListener("click", function () {
       var it = ALL[qvIdx];

@@ -1,0 +1,25 @@
+# Happy Homes Dealer Hub — Netlify configuration
+#
+# Deploy by dragging THIS WHOLE FOLDER onto the Netlify Deploys drop zone
+# (not index.html on its own) so the functions directory ships with it.
+#
+# Functions are included on Netlify's free plan (125k requests/month), so
+# the two endpoints below cost nothing to run.
+
+[build]
+  publish    = "."
+  functions  = "netlify/functions"
+
+# The page calls these two paths on its own domain. The Apps Script URL
+# lives only inside the function code, which runs server-side and is never
+# sent to the browser — so View Source no longer exposes the feed.
+
+[[redirects]]
+  from   = "/api/inventory"
+  to     = "/.netlify/functions/inventory"
+  status = 200
+
+[[redirects]]
+  from   = "/api/order"
+  to     = "/.netlify/functions/order"
+  status = 200

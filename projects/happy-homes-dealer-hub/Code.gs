@@ -27,6 +27,12 @@
  * adding a column to the sheet automatically adds it to the feed.  The
  * portal matches headers case/space-insensitively, so renaming
  * "MSRP" to "Dealer Price" needs no code change here or there.
+ *
+ * doPost receives order requests forwarded by the Netlify /api/order
+ * function and appends one row per line item to the "orders" tab, which is
+ * created on first use.  It answers with a reference number the dealer sees
+ * on screen.  Requests must carry ORDER_TOKEN; the /exec URL is public, so
+ * without that check anyone who found it could append rows.
  */
 
 var SPREADSHEET_ID = '1qaEdVMAqPukhfo13b6CyD2qzoWHdnO-gL2xY-BpjWWc';
@@ -36,6 +42,20 @@ var TAB_NAMES = ['closeout specials', 'sectionals', 'new arrivals'];
 
 /** Cache the assembled payload for this many seconds (0 disables). */
 var CACHE_SECONDS = 300;
+
+/** Tab that submitted orders are appended to. Created on first order. */
+var ORDERS_TAB = 'orders';
+
+/**
+ * Shared secret with the Netlify order function. If you change this, change
+ * ORDER_TOKEN in netlify/functions/shared.js (or the ORDER_TOKEN environment
+ * variable on the Netlify project) to match, then redeploy both.
+ */
+var ORDER_TOKEN = 'hh-dealer-portal-2026';
+
+var ORDER_HEADERS = ['Order Ref', 'Submitted At', 'Dealer', 'Contact', 'SKU',
+                     'Product Name', 'Category', 'Qty', 'Dealer Price',
+                     'Line Total', 'Notes'];
 
 function doGet(e) {
   try {
@@ -135,6 +155,125 @@ function json(body) {
   return ContentService
     .createTextOutput(body)
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ===================================================================== *
+ * Order intake
+ * ===================================================================== */
+
+function doPost(e) {
+  try {
+    var raw = e && e.postData && e.postData.contents;
+    if (!raw) return json(JSON.stringify({ ok: false, error: 'Empty request body' }));
+
+    var payload = JSON.parse(raw);
+    if (payload.token !== ORDER_TOKEN) {
+      return json(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+    }
+
+    var items = payload.items;
+    if (!items || !items.length) {
+      return json(JSON.stringify({ ok: false, error: 'Order contains no items' }));
+    }
+
+    var result = appendOrder(payload);
+    return json(JSON.stringify({
+      ok: true,
+      reference: result.reference,
+      lines: result.lines,
+      total: result.total
+    }));
+
+  } catch (err) {
+    return json(JSON.stringify({
+      ok: false,
+      error: String(err && err.message ? err.message : err)
+    }));
+  }
+}
+
+/**
+ * Append one row per line item, all sharing an order reference.
+ * A script lock serialises reference allocation so two dealers submitting at
+ * the same moment cannot be handed the same number.
+ */
+function appendOrder(payload) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = getOrdersSheet();
+    var reference = nextReference();
+    var now = new Date();
+    var stamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    var total = 0;
+    var rows = [];
+
+    for (var i = 0; i < payload.items.length; i++) {
+      var it = payload.items[i];
+      var qty = Number(it.qty) || 0;
+      var price = (it.price === null || it.price === undefined || it.price === '')
+        ? '' : Number(it.price);
+      var line = (price === '') ? '' : price * qty;
+      if (line !== '') total += line;
+
+      rows.push([
+        reference, stamp,
+        payload.dealer || '', payload.contact || '',
+        it.sku || '', it.name || '', it.category || '',
+        qty, price, line,
+        i === 0 ? (payload.notes || '') : ''
+      ]);
+    }
+
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, ORDER_HEADERS.length)
+         .setValues(rows);
+
+    return { reference: reference, lines: rows.length, total: total };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Return the orders tab, creating it with headers the first time. */
+function getOrdersSheet() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = findSheet(ss, ORDERS_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(ORDERS_TAB);
+    sheet.appendRow(ORDER_HEADERS);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, ORDER_HEADERS.length).setFontWeight('bold');
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(ORDER_HEADERS);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/** Sequential, human-readable reference: HH-20260826-0007 */
+function nextReference() {
+  var props = PropertiesService.getScriptProperties();
+  var n = parseInt(props.getProperty('orderCounter') || '0', 10) + 1;
+  props.setProperty('orderCounter', String(n));
+  var day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
+  var padded = ('0000' + n).slice(-4);
+  return 'HH-' + day + '-' + padded;
+}
+
+/**
+ * Run this from the Apps Script editor (Run -> checkOrderIntake) to prove the
+ * orders tab and reference counter work, WITHOUT going through Netlify.
+ * It writes one test row you should delete afterwards.
+ */
+function checkOrderIntake() {
+  var res = appendOrder({
+    dealer: 'TEST — delete this row',
+    contact: 'checkOrderIntake',
+    notes: 'Written by checkOrderIntake; safe to delete.',
+    items: [{ sku: 'TEST-SKU', name: 'Test line item', category: 'Test', qty: 2, price: 9.99 }]
+  });
+  Logger.log('Wrote ' + res.lines + ' row(s) as ' + res.reference + ', total ' + res.total);
+  return res;
 }
 
 /**

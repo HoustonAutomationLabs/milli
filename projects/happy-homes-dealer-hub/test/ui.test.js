@@ -81,13 +81,16 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
   ok('one cart line rendered', (await page.$$('.line')).length===1);
   ok('review button enabled', await page.$eval('#reviewBtn', e=>!e.disabled));
 
-  console.log('\nOrder review (preview only)');
+  console.log('\nOrder review');
   await page.click('#reviewBtn');
   await page.waitForTimeout(400);
   ok('review modal opens', await page.$eval('#reviewModal', e=>e.classList.contains('open')));
   const body = await page.textContent('#reviewBody');
-  ok('states nothing was submitted', /Nothing has been submitted to Happy Homes/.test(body));
-  ok('order text block present', /NOT SUBMITTED/.test(await page.$eval('.ordertext', e=>e.value)));
+  ok('states a rep confirms before shipping', /confirms pricing and availability/.test(body),
+     body.slice(0, 90));
+  ok('offers a PO / delivery note field', (await page.$('#orderNotes')) !== null);
+  ok('keep-for-records summary present',
+     /HAPPY HOMES - DEALER ORDER REQUEST/.test(await page.$eval('.ordertext', e=>e.value)));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   ok('Escape closes the modal', await page.$eval('#reviewModal', e=>!e.classList.contains('open')));
@@ -128,6 +131,49 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
   await page.waitForSelector('.card');
   ok('order list survives reload (localStorage)', (await page.textContent('#cartCount'))==='2',
      await page.textContent('#cartCount'));
+
+  console.log('\nFeed URL is not exposed to the browser');
+  const src = await page.content();
+  ok('page source contains no script.google.com', src.indexOf('script.google.com') === -1);
+  ok('page source contains no Apps Script deployment id', src.indexOf('AKfycb') === -1);
+  ok('page calls the same-origin proxy instead', src.indexOf('/api/inventory') !== -1);
+
+  console.log('\nSubmitting an order');
+  await page.click('.rail-block .card .add:not([disabled])');
+  await page.waitForTimeout(200);
+  await page.click('#openCart'); await page.waitForTimeout(400);
+  await page.click('#reviewBtn'); await page.waitForTimeout(400);
+  ok('submit button is present', (await page.$('#submitBtn')) !== null);
+  await page.fill('#orderNotes', 'PO 55512');
+  await page.click('#submitBtn');
+  await page.waitForSelector('#reviewBody h3', { timeout: 8000 });
+  const conf = await page.textContent('#reviewBody');
+  ok('confirmation shown', /Order request submitted/.test(conf), conf.slice(0, 80));
+  ok('reference number displayed', /HH-20260826-\d{4}/.test(conf),
+     (conf.match(/HH-[\d-]+/) || ['none'])[0]);
+  ok('submit button hidden after success', await page.$eval('#submitBtn', e => e.hidden));
+  ok('cart cleared after a successful submit', (await page.textContent('#cartCount')) === '0',
+     await page.textContent('#cartCount'));
+  ok('receipt text carries the reference',
+     /Reference: HH-/.test(await page.$eval('.ordertext', e => e.value)));
+  await page.click('#keepShoppingBtn'); await page.waitForTimeout(300);
+
+  console.log('\nSubmit failure keeps the order list');
+  await page.click('.rail-block .card .add:not([disabled])');
+  await page.waitForTimeout(200);
+  await page.route('**/api/order', r => r.fulfill({
+    status: 502, contentType: 'application/json',
+    body: JSON.stringify({ ok: false, error: 'Order endpoint unreachable' }) }));
+  await page.click('#openCart'); await page.waitForTimeout(400);
+  await page.click('#reviewBtn'); await page.waitForTimeout(400);
+  await page.click('#submitBtn');
+  await page.waitForSelector('#submitError', { timeout: 8000 });
+  ok('error shown on failure', /Could not submit/.test(await page.textContent('#submitError')));
+  ok('order list NOT cleared on failure', (await page.textContent('#cartCount')) !== '0',
+     await page.textContent('#cartCount'));
+  ok('submit button re-enabled for a retry', await page.$eval('#submitBtn', e => !e.disabled));
+  await page.unroute('**/api/order');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 
   console.log('\nScreenshots');
   await page.screenshot({ path:__dirname+'/shot-desktop.png', fullPage:false });
