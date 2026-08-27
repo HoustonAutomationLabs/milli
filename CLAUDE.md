@@ -17,8 +17,13 @@ wrong.** This was requested explicitly. Concretely:
   reason for a decision. "Only I open it on this device" was a genuine
   misreading of how public hosting works, and saying so changed the outcome.
 - The user is not a developer. Explain terms the first time (they asked what a
-  pull request is). Do not assume a terminal is available to them — offer the
-  lowest-effort path that gets the same answer.
+  pull request is). Offer the lowest-effort path that gets the same answer.
+- **The user has VS Code installed on their Mac.** Use it as the default for
+  both running commands and editing files: `code .` to open the project,
+  Control+` for the built-in terminal. Do not write instructions that send them
+  to TextEdit — it substitutes curly quotes, which silently breaks
+  `workflow.json` and `.env`. Commands are fine to give; a terminal is
+  available.
 - Verify claims rather than asserting them. Every "this is safe" or "this
   works" in this repo should be backed by something that was actually run.
 
