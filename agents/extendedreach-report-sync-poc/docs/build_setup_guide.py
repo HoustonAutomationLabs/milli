@@ -188,7 +188,7 @@ TOC_ENTRIES = [
     ("Step 2", "Install it", "s2"),
     ("Step 3", "Create your settings file", "s3"),
     ("Step 4", "Connect Google Drive", "s4"),
-    ("Step 5", "Show it your report", "s5"),
+    ("Step 5", "Show it your reports (repeat per report)", "s5"),
     ("Step 6", "Tell it what a good file looks like", "s6"),
     ("Step 7", "Test run — nothing gets uploaded", "s7"),
     ("Step 8", "The first real run", "s8"),
@@ -310,8 +310,8 @@ def story(toc_pages=None):
     yield para("ExtendedReach Report Sync",
                S("cover", fontName="Helvetica-Bold", fontSize=27, leading=31,
                  textColor=INK, spaceAfter=10))
-    yield para("Automatically download one ExtendedReach report every day "
-               "and file it in Google Drive.",
+    yield para("Automatically download your ExtendedReach reports every day "
+               "and file them in Google Drive.",
                S("sub", parent=LEAD, fontSize=13, leading=19, textColor=MUTED))
     yield Spacer(1, 0.3 * inch)
 
@@ -328,9 +328,11 @@ def story(toc_pages=None):
     yield para("What you are setting up", H2)
     yield para(
         "Right now, someone signs in to ExtendedReach, opens a report, clicks "
-        "<b>Excel</b>, and saves the file. Every day. This tool does exactly "
-        "that same sequence, on a timer, and puts the result in a Google Drive "
-        "folder so the leadership team always has today's numbers.", BODY)
+        "<b>Excel</b>, and saves the file. Then does it again for the next "
+        "report. Every day. This tool does that same sequence for as many "
+        "reports as you configure — nine, or any other number — in one browser "
+        "session, on a timer, and puts the results in Google Drive so the "
+        "leadership team always has today's numbers.", BODY)
     yield para(
         "It is deliberately boring. It clicks the same buttons a person clicks. "
         "It cannot create, edit, approve, reject, submit or delete anything in "
@@ -374,11 +376,13 @@ def story(toc_pages=None):
         "two-factor code. You will type these into the real ExtendedReach "
         "login page yourself, once. You never put them in a file.", BODY)
 
-    yield para("3. The one report you want automated", H3)
+    yield para("3. The reports you want automated", H3)
     yield para(
-        "Pick a single report to start with. Know how you get to it: which "
-        "menu, which submenu. You will be asked to open it while the tool "
-        "watches.", BODY)
+        "List them, and know how you reach each one: which menu, which "
+        "submenu. You will open each while the tool watches. <b>Start with "
+        "one</b>, get it all the way through to Drive, and only then add the "
+        "rest — a problem is far easier to find with one report than with "
+        "nine.", BODY)
 
     yield para("4. A Google Drive folder", H3)
     yield para(
@@ -394,7 +398,7 @@ def story(toc_pages=None):
     yield para(
         "Most of it is waiting for downloads and clicking through Google's "
         "permission screens. The parts that need your attention are Steps 5 "
-        "and 7.", BODY)
+        "and 7. Add roughly five minutes per extra report beyond the first.", BODY)
 
     yield Spacer(1, 0.2 * inch)
     yield para("How you will type commands", H2)
@@ -653,11 +657,17 @@ def story(toc_pages=None):
     yield PageBreak()
 
     # ================= STEP 5 =================
-    yield step_head(5, "Show it your report", "10 minutes, hands on")
+    yield step_head(5, "Show it your reports", "10 min for the first, 3 each after")
     yield para(
-        "The tool does not know where your report lives or what the export "
-        "button looks like. This step teaches it, by watching you.", BODY)
+        "The tool does not know where your reports live or what the export "
+        "button looks like. This step teaches it, by watching you. You run it "
+        "<b>once per report</b> — nine times for nine reports.", BODY)
     yield code("./.venv/bin/python -m src.main --setup-assist")
+    yield Spacer(1, 6)
+    yield para(
+        "It asks for a short name for the report first (your choice — "
+        "lowercase, underscores instead of spaces, e.g. "
+        "<font face='Courier'>past_due_tasks</font>). Then:", BODY)
     yield Spacer(1, 10)
     yield para("A browser window opens and the Terminal walks you through "
                "three parts.", BODY)
@@ -689,15 +699,37 @@ def story(toc_pages=None):
     yield Spacer(1, 8)
     yield para("Then save what it captured:", BODY)
     yield code("cp config/workflow.draft.json config/workflow.json")
+    yield Spacer(1, 10)
+
+    yield para("Now repeat for each remaining report", H3)
+    yield para(
+        "Run the same command again. It <b>adds</b> the next report and keeps "
+        "the ones you have already done — it never starts over. After the "
+        "first time it will not ask you to sign in again either, so each extra "
+        "report takes two or three minutes.", BODY)
+    yield code("./.venv/bin/python -m src.main --setup-assist",
+               "cp config/workflow.draft.json config/workflow.json")
+    yield Spacer(1, 8)
+    yield para("Check what you have so far at any point:", BODY)
+    yield code("./.venv/bin/python -m src.main --list-reports")
+    yield Spacer(1, 6)
+    yield code("  9 report(s) configured",
+               "",
+               "      slug           columns checked  description",
+               "  [x] past_due_tasks 4                Past due case tasks",
+               "  [x] open_beds      2                Open beds",
+               "  ...",
+               "",
+               "  9 enabled; these all run on each scheduled run.", output=True)
     yield Spacer(1, 8)
     yield para("And check everything so far makes sense:", BODY)
     yield code("./.venv/bin/python -m src.main --validate-config")
     yield Spacer(1, 6)
     yield para(
         "It either says the configuration is complete, or lists exactly what "
-        "is still wrong. If the only complaint is about "
-        "<font face='Courier'>EXPECTED_CSV_HEADERS</font>, that is expected — "
-        "Step 6 fixes it.", BODY)
+        "is still wrong. Warnings about "
+        "<font face='Courier'>expected_csv_headers</font> are expected at this "
+        "point — Step 6 fills those in, and they do not block a run.", BODY)
 
     yield Spacer(1, 0.1 * inch)
     yield callout(
@@ -718,10 +750,11 @@ def story(toc_pages=None):
         "your report actually has; if a download does not have them, it is "
         "rejected and never uploaded.", BODY)
 
-    yield para("A. Download the report by hand, once", H3)
+    yield para("A. Download each report by hand, once", H3)
     yield para(
-        "In your normal browser, open the report and click the export button. "
-        "Open the file that downloads.", BODY)
+        "In your normal browser, open a report and click the export button. "
+        "Open the file that downloads. Repeat for each report — you only ever "
+        "do this once per report.", BODY)
 
     yield para("B. Copy the column headings", H3)
     yield para(
@@ -730,14 +763,28 @@ def story(toc_pages=None):
     yield code("Case #,Client Name,Task,Due Date,Status", output=True)
     yield Spacer(1, 8)
 
-    yield para("C. Put them in your settings", H3)
-    yield code("open -e .env")
+    yield para("C. Put them in the workflow file", H3)
+    yield para(
+        "Each report has its own columns, so each report gets its own list. "
+        "Open the workflow file:", BODY)
+    yield code("open -e config/workflow.json")
     yield Spacer(1, 8)
     yield para(
-        "Find the line beginning <font face='Courier'>EXPECTED_CSV_HEADERS=</font> "
-        "and replace everything after the equals sign with your list. No "
-        "spaces after the commas unless the heading itself has one. Save and "
-        "close.", BODY)
+        "Find your report by its short name, and fill in the "
+        "<font face='Courier'>expected_csv_headers</font> list inside its "
+        "<font face='Courier'>validation</font> section. It looks like this:", BODY)
+    yield code('"past_due_tasks": {',
+               '  "enabled": true,',
+               '  "validation": {',
+               '    "expected_csv_headers": ["Case #", "Task", "Due Date", "Status"]',
+               '  }',
+               '}', output=True)
+    yield Spacer(1, 8)
+    yield para(
+        "Each name in double quotes, commas between them. Do this for every "
+        "report. Leave the list empty — <font face='Courier'>[]</font> — for "
+        "any report you do not want column-checked; it is still checked for "
+        "size and file type.", BODY)
 
     yield Spacer(1, 6)
     yield para("Now confirm:", BODY)
@@ -781,22 +828,35 @@ def story(toc_pages=None):
         "should already know you. If it asks you to sign in again, do so — it "
         "waits.", BODY)
     yield para("Watch it navigate, click export, and save the file. Then:", BODY)
-    yield code("run id     20260826-180503-a1b2c3",
-               "report     past_due_tasks",
-               "status     success",
-               "file       extendedreach_past_due_tasks_2026-08-26_180503.csv",
-               "drive id   (not uploaded)", output=True)
+    yield para(
+        "It works through every report in one browser session, then prints a "
+        "line per report:", BODY)
+    yield code("  past_due_tasks  success",
+               "  open_beds       success",
+               "  next_court      success",
+               "  ...",
+               "  9 uploaded, 0 already there, 0 failed of 9 report(s)",
+               output=True)
+    yield Spacer(1, 8)
+    yield para(
+        "If one report fails, the others still run. That is deliberate — a "
+        "single mislabelled button should not cost you the other eight.", BODY)
 
     yield Spacer(1, 10)
-    yield para("Now open the file yourself and look at it", H3)
+    yield para("Now open the files yourself and look at them", H3)
     yield para("This is the part worth doing carefully.", BODY)
     yield code("open ~/er-sync/downloads")
     yield Spacer(1, 8)
     yield para("Check three things:", BODY)
+    yield para(
+        "Check each one. This is tedious with nine reports and it is the only "
+        "time you have to do it.", SMALL)
     yield table(
         ["Check", "Why"],
         [["Is it the right report?",
-          "Confirms it went to the right page, not a neighbouring one."],
+          "Confirms it went to the right page, not a neighbouring one. With "
+          "several reports, the failure to watch for is two files that are "
+          "actually the same export."],
          ["Are the filters applied?",
           "If you set a date range in Step 5, confirm the file reflects it."],
          ["Does the row count look sane?",
@@ -916,15 +976,30 @@ def story(toc_pages=None):
     yield para("What you might see", H2)
 
     yield para("All good", H3)
-    yield code("2026-08-26 18:00:00  success       1XyZ...",
-               "", "  Last run succeeded.", output=True)
+    yield code("  report          when         status     detail",
+               "  past_due_tasks  08-27 18:00  success    1XyZ...",
+               "  open_beds       08-27 18:00  success    1AbC...",
+               "  ...",
+               "",
+               "  All 9 report(s) are up to date.", output=True)
     yield para("Nothing to do.", SMALL)
 
+    yield para("One report broken, the rest fine", H3)
+    yield code("  ACTION NEEDED: 1 report(s) failing on the last run:",
+               "      open_beds     portal_structure_changed",
+               "  The other 8 are fine, so this is that report's own problem,",
+               "  not the session.", output=True)
+    yield para(
+        "That last line is the one that matters. If one report fails and the "
+        "others succeed, the sign-in is fine and something changed on that "
+        "one report's page — send me the report name and the category. If "
+        "<b>every</b> report fails at once, it is almost always the session, "
+        "not nine broken pages.", BODY)
+
     yield para("Needs you — the most common one", H3)
-    yield code("2026-08-26 18:00:00  requires_human_login   not_authenticated",
-               "",
-               "  ACTION NEEDED: the saved session has expired.",
-               "  Run  ./scripts/run_once.sh  once, headed, and sign in.",
+    yield code("  ACTION NEEDED: the portal session has expired.",
+               "  One headed run signs it back in:  ./scripts/run_once.sh",
+               "  Until then every report is stopped, uploading nothing.",
                output=True)
     yield para(
         "Your ExtendedReach session lapsed. This is expected every so often — "
@@ -1133,11 +1208,16 @@ def story(toc_pages=None):
     yield table(
         ["Command", "What it does"],
         [["./.venv/bin/python -m src.main --status",
-          "Recent runs. Says if anything needs you. <b>Run weekly.</b>"],
+          "Latest run of every report. Says if anything needs you. "
+          "<b>Run weekly.</b>"],
+         ["./.venv/bin/python -m src.main --list-reports",
+          "Every report configured, and whether it is switched on"],
          ["./.venv/bin/python -m src.main --doctor",
           "Where am I in setup, and what is the one next command"],
          ["./scripts/run_once.sh",
-          "Run it now, for real"],
+          "Run every enabled report now, for real"],
+         ["./scripts/run_once.sh --report open_beds",
+          "Run just one report"],
          ["./scripts/run_once.sh --dry-run",
           "Run it now, but do not upload"]],
         [3.0 * inch, 3.25 * inch])
@@ -1152,7 +1232,7 @@ def story(toc_pages=None):
          ["open -e .env",
           "Edit your settings"],
          ["./.venv/bin/python -m src.main --setup-assist",
-          "Capture the report address and buttons (Step 5)"],
+          "Add ONE report. Run again for each (Step 5)"],
          ["./.venv/bin/python -m src.main --validate-config",
           "Check the settings make sense"],
          ["./.venv/bin/python -m src.main --test-download-fixture",

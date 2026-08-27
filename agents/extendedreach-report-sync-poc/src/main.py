@@ -25,7 +25,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # Absolute imports throughout, with the project root forced onto sys.path, so
 # `python -m src.main` and `python src/main.py` behave identically. Relative
@@ -199,30 +199,56 @@ def cmd_once(args) -> int:
     logging_utils.configure_extra_terms(cfg.redact_terms)
     log = logging_utils.get_logger("er_sync", cfg.log_dir, verbose=args.verbose)
 
-    record = logging_utils.RunRecord(
-        run_id=run_id,
-        report_slug=cfg.report_slug,
-        started_at=started.astimezone(timezone.utc).isoformat(timespec="seconds"),
-        run_key=validators.build_run_key(cfg.report_slug, started),
-        dry_run=args.dry_run,
-    )
+    reports = cfg.selected_reports(args.report)
+    if not reports:
+        if args.report:
+            known = ", ".join(sorted(cfg.reports)) or "none"
+            print(f"\nNo report named {args.report!r}. Configured: {known}\n",
+                  file=sys.stderr)
+        else:
+            print("\nNo reports are enabled in the workflow file.\n",
+                  file=sys.stderr)
+        return EXIT_CONFIG_INVALID
+
+    # One record per report. They share a run id so a single scheduled run can
+    # be read back as a unit, and each carries its own outcome.
+    started_utc = started.astimezone(timezone.utc).isoformat(timespec="seconds")
+    records = {
+        report.slug: logging_utils.RunRecord(
+            run_id=run_id,
+            report_slug=report.slug,
+            started_at=started_utc,
+            run_key=validators.build_run_key(report.slug, started),
+            dry_run=args.dry_run,
+        )
+        for report in reports
+    }
 
     for warning in cfg.warnings:
         log.warning("%s", warning)
-        record.note(str(warning))
 
     try:
         with SingleInstance(cfg.log_dir / LOCK_NAME):
-            return _run_workflow(cfg, args, log, record, started)
+            return _run_workflow(cfg, args, log, records, started)
     except RuntimeError:
         # Another instance is running. Not a failure — the scheduler overlapped.
         log.warning("Another run is already in progress; exiting")
-        record.finish(logging_utils.STATUS_SKIPPED, "another_run_in_progress")
-        logging_utils.write_run_record(cfg.log_dir, record)
+        for record in records.values():
+            record.finish(logging_utils.STATUS_SKIPPED, "another_run_in_progress")
+            logging_utils.write_run_record(cfg.log_dir, record)
         return EXIT_ALREADY_RUNNING
 
 
-def _run_workflow(cfg, args, log, record, started) -> int:
+def _run_workflow(cfg, args, log, records, started) -> int:
+    """Export every selected report in one browser session.
+
+    One sign-in covers all of them, which matters at nine reports: opening and
+    closing a browser nine times would mean nine chances for the session check
+    to be the thing that fails.
+
+    A failure on one report never loses the others. The run continues and the
+    exit code reports the worst outcome, so a scheduler still alerts.
+    """
     # Imported here so --validate-config and --test-download-fixture work
     # without Playwright installed.
     try:
@@ -233,109 +259,176 @@ def _run_workflow(cfg, args, log, record, started) -> int:
         )
     except ImportError:
         log.error("Playwright is not installed; run scripts/install_playwright.sh")
-        record.finish(logging_utils.STATUS_FAILED, "playwright_not_installed")
-        logging_utils.write_run_record(cfg.log_dir, record)
+        for record in records.values():
+            record.finish(logging_utils.STATUS_FAILED, "playwright_not_installed")
+            logging_utils.write_run_record(cfg.log_dir, record)
         return EXIT_CONFIG_INVALID
 
-    log.info("Run %s starting for report '%s'%s",
-             record.run_id, cfg.report_slug, " (dry run)" if args.dry_run else "")
+    reports = cfg.selected_reports(args.report)
+    log.info("Run %s starting: %d report(s)%s",
+             records[reports[0].slug].run_id if reports else "-",
+             len(reports), " (dry run)" if args.dry_run else "")
 
-    download = None
-    worker: Optional[BrowserWorker] = None
+    downloads: dict[str, Any] = {}
+    uploader = None if args.dry_run else DriveUploader(cfg, log)
+    worst = EXIT_OK
 
+    # ---- phase 1: one browser session, every report ----------------------
     try:
         with BrowserWorker(cfg, log, headed=args.headed) as worker:
             worker.ensure_authenticated()
-            worker.navigate_to_report()
-            worker.apply_filters()
-            download = worker.download_report(when=started)
+
+            for report in reports:
+                record = records[report.slug]
+                log.info("[%s] navigating", report.slug)
+                try:
+                    worker.navigate_to_report(report)
+                    worker.apply_filters(report)
+                    downloads[report.slug] = worker.download_report(report, when=started)
+                except BrowserWorkerError as exc:
+                    # One report's broken selector must not cost the other eight.
+                    log.error("[%s] failed (%s)", report.slug, exc.category)
+                    record.note(exc.detail)
+                    record.finish(logging_utils.STATUS_FAILED, exc.category)
+                    worst = max(worst, EXIT_DOWNLOAD_FAILED)
+                except Exception as exc:
+                    log.error("[%s] unexpected failure (%s)",
+                              report.slug, type(exc).__name__)
+                    record.finish(logging_utils.STATUS_FAILED, "unexpected_browser_error")
+                    worst = max(worst, EXIT_UNEXPECTED)
 
     except RequiresHumanLogin as exc:
+        # Authentication is shared, so this ends every report at once.
         log.error("Stopped: a person must complete sign-in")
-        record.finish(logging_utils.STATUS_REQUIRES_HUMAN_LOGIN, exc.category)
-        logging_utils.write_run_record(cfg.log_dir, record)
+        for record in records.values():
+            record.finish(logging_utils.STATUS_REQUIRES_HUMAN_LOGIN, exc.category)
+            logging_utils.write_run_record(cfg.log_dir, record)
         return EXIT_REQUIRES_HUMAN_LOGIN
 
     except BrowserWorkerError as exc:
-        log.error("Browser step failed (%s)", exc.category)
-        record.note(exc.detail)
-        record.finish(logging_utils.STATUS_FAILED, exc.category)
-        logging_utils.write_run_record(cfg.log_dir, record)
+        log.error("Browser session failed (%s)", exc.category)
+        for record in records.values():
+            if record.status == logging_utils.STATUS_FAILED and record.error_category:
+                continue
+            record.finish(logging_utils.STATUS_FAILED, exc.category)
+        _flush(cfg, records)
         return EXIT_DOWNLOAD_FAILED
 
     except Exception as exc:
         log.error("Unexpected browser failure (%s)", type(exc).__name__)
-        record.finish(logging_utils.STATUS_FAILED, "unexpected_browser_error")
-        logging_utils.write_run_record(cfg.log_dir, record)
+        for record in records.values():
+            if record.error_category:
+                continue
+            record.finish(logging_utils.STATUS_FAILED, "unexpected_browser_error")
+        _flush(cfg, records)
         return EXIT_UNEXPECTED
 
-    record.local_filename = download.filename
-    log.info("Validating the downloaded file")
+    # ---- phase 2: validate, then upload ---------------------------------
+    for report in reports:
+        record = records[report.slug]
+        download = downloads.get(report.slug)
+        if download is None:
+            continue                     # already recorded as failed above
 
-    result = validators.validate_file(
-        download.path,
-        min_bytes=cfg.min_file_bytes,
-        allowed_extensions=cfg.allowed_extensions,
-        expected_csv_headers=cfg.expected_csv_headers,
-        csv_encodings=cfg.csv_encodings,
-    )
-    if not result.ok:
-        log.error("Validation failed (%s): %s", result.category, result.detail)
-        record.note(f"checks passed before failure: {result.checks}")
-        record.finish(logging_utils.STATUS_FAILED, result.category)
+        record.local_filename = download.filename
+        result = validators.validate_file(
+            download.path,
+            min_bytes=report.min_bytes(cfg.min_file_bytes),
+            allowed_extensions=cfg.allowed_extensions,
+            expected_csv_headers=report.expected_headers(cfg.expected_csv_headers),
+            csv_encodings=cfg.csv_encodings,
+        )
+        if not result.ok:
+            log.error("[%s] validation failed (%s): %s",
+                      report.slug, result.category, result.detail)
+            record.note(f"checks passed before failure: {result.checks}")
+            record.finish(logging_utils.STATUS_FAILED, result.category)
+            worst = max(worst, EXIT_VALIDATION_FAILED)
+            continue
+
+        log.info("[%s] validation passed (%s)", report.slug, ", ".join(result.checks))
+
+        if args.dry_run:
+            record.note("dry run - upload skipped")
+            record.finish(logging_utils.STATUS_SUCCESS)
+            continue
+
+        folder = cfg.drive_folder_for(report)
+        run_key = record.run_key or validators.build_run_key(report.slug, started)
+        prefix = validators.filename_prefix_for_run_key(report.slug, started)
+        try:
+            existing = uploader.find_existing(folder, run_key, prefix)
+            if existing:
+                log.info("[%s] already in the folder for today; skipping upload",
+                         report.slug)
+                record.drive_file_id = existing.file_id
+                record.finish(logging_utils.STATUS_SKIPPED, "duplicate_run_key")
+                continue
+            record.drive_file_id = uploader.upload(
+                download.path, folder, run_key, report.slug)
+            record.finish(logging_utils.STATUS_SUCCESS)
+        except DriveError as exc:
+            log.error("[%s] Drive step failed (%s)", report.slug, exc.category)
+            record.note(exc.detail)
+            record.finish(logging_utils.STATUS_FAILED, exc.category)
+            worst = max(worst, EXIT_UPLOAD_FAILED)
+
+    _flush(cfg, records)
+    _print_multi_summary(records, cfg)
+    return worst
+
+
+def _flush(cfg, records) -> None:
+    """Write every run record, finishing any that never reached an outcome."""
+    for record in records.values():
+        if record.ended_at is None:
+            record.finish(logging_utils.STATUS_FAILED, "never_ran")
         logging_utils.write_run_record(cfg.log_dir, record)
-        return EXIT_VALIDATION_FAILED
 
-    log.info("Validation passed (%s)", ", ".join(result.checks))
 
-    if args.dry_run:
-        log.info("Dry run: the file was downloaded and validated but NOT uploaded")
-        record.note("dry run — upload skipped")
-        record.finish(logging_utils.STATUS_SUCCESS)
-        logging_utils.write_run_record(cfg.log_dir, record)
-        _print_summary(record, cfg)
+def _print_multi_summary(records, cfg) -> None:
+    rows = list(records.values())
+    width = max((len(r.report_slug) for r in rows), default=10)
+    print("\n" + "-" * 72)
+    for record in rows:
+        detail = record.drive_file_id or record.error_category or ""
+        print(f"  {record.report_slug:<{width}}  {record.status:<22} {detail}")
+    print("-" * 72)
+    ok = sum(1 for r in rows if r.status == logging_utils.STATUS_SUCCESS)
+    skipped = sum(1 for r in rows if r.status == logging_utils.STATUS_SKIPPED)
+    failed = sum(1 for r in rows if r.status == logging_utils.STATUS_FAILED)
+    print(f"  {ok} uploaded, {skipped} already there, {failed} failed "
+          f"of {len(rows)} report(s)")
+    print(f"  log  {cfg.log_dir / 'runs.jsonl'}")
+    print("-" * 72 + "\n")
+
+
+def cmd_list_reports(args) -> int:
+    """Show every configured report and whether it is switched on."""
+    try:
+        cfg = config_module.load(env_file=args.env_file)
+    except config_module.ConfigError as exc:
+        print(f"\n{exc}\n", file=sys.stderr)
+        return EXIT_CONFIG_INVALID
+
+    if not cfg.reports:
+        print("\nNo reports are configured yet. Run --setup-assist to add one.\n")
         return EXIT_OK
 
-    # -- upload ------------------------------------------------------------
-    uploader = DriveUploader(cfg, log)
-    run_key = record.run_key or validators.build_run_key(cfg.report_slug, started)
-    prefix = validators.filename_prefix_for_run_key(cfg.report_slug, started)
+    width = max(len(slug) for slug in cfg.reports)
+    print(f"\n  {len(cfg.reports)} report(s) configured\n")
+    print(f"  {'':3} {'slug':<{width}}  {'columns checked':<16} description")
+    print(f"  {'':3} {'-' * width}  {'-' * 16} {'-' * 30}")
+    for slug, report in cfg.reports.items():
+        mark = "[x]" if report.enabled else "[ ]"
+        headers = report.expected_headers(cfg.expected_csv_headers)
+        checked = str(len(headers)) if headers else "none (size only)"
+        print(f"  {mark} {slug:<{width}}  {checked:<16} {report.description[:34]}")
 
-    try:
-        existing = uploader.find_existing(cfg.drive_folder_id, run_key, prefix)
-        if existing:
-            log.info("A file for this run key is already in the folder; skipping upload")
-            record.drive_file_id = existing.file_id
-            record.finish(logging_utils.STATUS_SKIPPED, "duplicate_run_key")
-            logging_utils.write_run_record(cfg.log_dir, record)
-            _print_summary(record, cfg)
-            return EXIT_OK
-
-        record.drive_file_id = uploader.upload(
-            download.path, cfg.drive_folder_id, run_key, cfg.report_slug)
-
-    except DriveError as exc:
-        log.error("Drive step failed (%s)", exc.category)
-        record.note(exc.detail)
-        record.finish(logging_utils.STATUS_FAILED, exc.category)
-        logging_utils.write_run_record(cfg.log_dir, record)
-        return EXIT_UPLOAD_FAILED
-
-    record.finish(logging_utils.STATUS_SUCCESS)
-    logging_utils.write_run_record(cfg.log_dir, record)
-    _print_summary(record, cfg)
+    print(f"\n  {len(cfg.enabled_reports())} enabled; these all run on each "
+          f"scheduled run.")
+    print("  Run one on its own with:  --once --report <slug>\n")
     return EXIT_OK
-
-
-def _print_summary(record, cfg) -> None:
-    print("\n" + "-" * 60)
-    print(f"  run id     {record.run_id}")
-    print(f"  report     {record.report_slug}")
-    print(f"  status     {record.status}")
-    print(f"  file       {record.local_filename or '(none)'}")
-    print(f"  drive id   {record.drive_file_id or '(not uploaded)'}")
-    print(f"  log        {cfg.log_dir / 'runs.jsonl'}")
-    print("-" * 60 + "\n")
 
 
 def cmd_doctor(args) -> int:
@@ -369,8 +462,10 @@ def cmd_setup_assist(args) -> int:
 
     project_root = Path(__file__).resolve().parent.parent
     out_path = project_root / "config" / "workflow.draft.json"
+    live_path = project_root / "config" / "workflow.json"
     try:
-        return run_setup_assist(cfg, log, out_path)
+        return run_setup_assist(cfg, log, out_path, slug=args.report,
+                                live_path=live_path)
     except KeyboardInterrupt:
         print("\nCancelled. Nothing was written.\n")
         return EXIT_OK
@@ -411,44 +506,61 @@ def cmd_status(args) -> int:
         except json.JSONDecodeError:
             continue
 
-    limit = max(1, args.limit)
-    recent = records[-limit:]
+    # With nine reports a flat tail of the log shows one run and hides the
+    # rest, so the default view is the latest outcome per report.
+    latest: dict[str, dict] = {}
+    for record in records:
+        slug = record.get("report_slug", "?")
+        latest[slug] = record
 
-    print(f"\nLast {len(recent)} run(s) of {len(records)} recorded\n")
-    print(f"  {'started':<20} {'status':<22} {'detail'}")
-    print(f"  {'-' * 20} {'-' * 22} {'-' * 34}")
-    for record in recent:
-        started = (record.get("started_at") or "")[:19].replace("T", " ")
+    if args.report:
+        rows = [r for r in records if r.get("report_slug") == args.report]
+        rows = rows[-max(1, args.limit):]
+        title = f"Last {len(rows)} run(s) of {args.report}"
+    else:
+        rows = sorted(latest.values(), key=lambda r: r.get("report_slug", ""))
+        title = f"Latest run of each of {len(rows)} report(s)"
+
+    width = max((len(r.get("report_slug", "?")) for r in rows), default=12)
+    print(f"\n{title}\n")
+    print(f"  {'report':<{width}}  {'when':<17} {'status':<22} detail")
+    print(f"  {'-' * width}  {'-' * 17} {'-' * 22} {'-' * 24}")
+    for record in rows:
+        slug = record.get("report_slug", "?")
+        when = (record.get("started_at") or "")[5:16].replace("T", " ")
         status = record.get("status", "?")
         if record.get("dry_run"):
             status += " (dry)"
         detail = record.get("error_category") or record.get("drive_file_id") or ""
-        print(f"  {started:<20} {status:<22} {detail}")
+        print(f"  {slug:<{width}}  {when:<17} {status:<22} {detail}")
 
-    # A summary aimed at the question actually being asked: is it working?
-    last = recent[-1] if recent else {}
-    successes = sum(1 for r in records if r.get("status") == "success")
-    failures = [r for r in records if r.get("status") == "failed"]
-    human = [r for r in records
-             if r.get("status") == "requires_human_login"]
+    # The summary answers the only question that matters: is anything stuck?
+    needs_login = [s for s, r in latest.items()
+                   if r.get("status") == logging_utils.STATUS_REQUIRES_HUMAN_LOGIN]
+    failing = [s for s, r in latest.items() if r.get("status") == logging_utils.STATUS_FAILED]
+    fine = [s for s, r in latest.items()
+            if r.get("status") in (logging_utils.STATUS_SUCCESS,
+                                   logging_utils.STATUS_SKIPPED)]
 
     print()
-    if last.get("status") == "success":
-        print("  Last run succeeded.")
-    elif last.get("status") == "skipped":
-        print("  Last run was skipped — already uploaded, or another run held "
-              "the lock. Both are normal.")
-    elif last.get("status") == "requires_human_login":
-        print("  ACTION NEEDED: the saved session has expired.")
-        print("  Run  ./scripts/run_once.sh  once, headed, and sign in.")
-        print("  Until you do, the scheduled job will keep doing nothing.")
-    elif last.get("status") == "failed":
-        print(f"  ACTION NEEDED: the last run failed "
-              f"({last.get('error_category')}).")
+    if needs_login:
+        print("  ACTION NEEDED: the portal session has expired.")
+        print("  One headed run signs it back in:  ./scripts/run_once.sh")
+        print("  Until then every report is stopped, uploading nothing.")
+    elif failing:
+        print(f"  ACTION NEEDED: {len(failing)} report(s) failing on the last run:")
+        for slug in sorted(failing):
+            print(f"      {slug:<{width}}  {latest[slug].get('error_category')}")
+        if fine:
+            print(f"  The other {len(fine)} are fine, so this is that report's "
+                  f"own problem, not the session.")
+    else:
+        print(f"  All {len(fine)} report(s) are up to date.")
 
-    print(f"\n  totals: {successes} success, {len(failures)} failed, "
-          f"{len(human)} needing sign-in\n")
+    print(f"\n  {len(records)} run record(s) in total. "
+          f"One report's history:  --status --report <slug>\n")
     return EXIT_OK
+
 
 
 def cmd_schedule(args) -> int:
@@ -513,6 +625,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="show recent runs and whether anything needs you")
     command.add_argument("--doctor", action="store_true",
                          help="show the setup checklist and the one next command")
+    command.add_argument("--list-reports", action="store_true",
+                         help="show every configured report")
 
     headed = parser.add_mutually_exclusive_group()
     headed.add_argument("--headed", dest="headed", action="store_true", default=True,
@@ -528,6 +642,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", default=None, help="path to a .env file")
     parser.add_argument("--cron", default=None,
                         help="crontab expression for --schedule (overrides .env)")
+    parser.add_argument("--report", default=None, metavar="SLUG",
+                        help="run just this one report (default: every enabled "
+                             "report)")
     parser.add_argument("--limit", type=int, default=10,
                         help="how many runs --status shows (default 10)")
     parser.add_argument("--verbose", action="store_true", help="debug logging")
@@ -541,6 +658,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_validate_config(args)
     if args.test_download_fixture:
         return cmd_test_fixture(args)
+    if args.list_reports:
+        return cmd_list_reports(args)
     if args.doctor:
         return cmd_doctor(args)
     if args.setup_assist:

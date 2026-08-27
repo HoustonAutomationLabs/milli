@@ -203,6 +203,7 @@ python -m src.main --once --dry-run           # everything except the upload
 python -m src.main --once                     # the full workflow
 python -m src.main --once --headless          # no window; needs a live session
 python -m src.main --doctor                   # where am I? what's next?
+python -m src.main --list-reports             # every configured report
 python -m src.main --setup-assist             # capture URL + selectors
 python -m src.main --status                   # recent runs; is it working?
 python -m src.main --schedule                 # local APScheduler loop
@@ -349,27 +350,61 @@ where an unvalidated file reaches Drive.
 
 ---
 
-## Extending to more reports
+## Multiple reports
 
-`workflow.json` keys reports by slug, so a second one is a second entry. The
-POC deliberately refuses to run with more than one enabled — a config error,
-not a silent choice of whichever came first.
+Every **enabled** report in `workflow.json` runs on each scheduled run, in one
+browser session. One sign-in covers all of them, which matters at nine reports:
+opening the browser nine times would mean nine chances for the session check to
+be the thing that fails.
 
-To go multi-report later: loop over the enabled reports in `_run_workflow`,
-give each its own `RunRecord`, and keep the exit code as the worst of them.
-One failing report must not lose the others — the existing Node exporter in
-this repository (`scripts/export-extendedreach.mjs`) already does exactly
-that, and is worth reading first.
+```bash
+python -m src.main --list-reports              # what is configured
+python -m src.main --once                      # every enabled report
+python -m src.main --once --report openbeds    # just one
+python -m src.main --status                    # latest run of each
+python -m src.main --status --report openbeds  # one report's history
+```
 
-## Relationship to the rest of this repository
+Add a report by running `--setup-assist` again. It is **additive** — it adds
+one report per run and keeps the ones already captured. Run it nine times for
+nine reports.
 
-`scripts/export-extendedreach.mjs` is a Node exporter that already pulls
-fourteen ExtendedReach reports into `data/exports` for the dashboard. It
-overlaps with this tool's steps 1–9. This project adds what that one does not
-have: validation before publication, duplicate suppression, a redacted
-operational log, and Google Drive delivery. Before either is put into
-production, decide which one owns exporting — running both means two browser
-sessions on the same account and two definitions of "today's export".
+```bash
+python -m src.main --setup-assist --report openbeds
+```
+
+Three things are per-report, because with nine reports a single global setting
+is wrong for eight of them:
+
+| Setting | Where | Falls back to |
+|---|---|---|
+| Expected columns | `validation.expected_csv_headers` | `EXPECTED_CSV_HEADERS` |
+| Minimum file size | `validation.min_file_bytes` | `MIN_FILE_BYTES` |
+| Drive folder | `drive_folder_id_env` | `GOOGLE_DRIVE_FOLDER_ID` |
+
+An explicit empty column list means "do not check this report's columns" and is
+honoured; removing the key falls back instead.
+
+**One failure never loses the others.** A broken selector on one report is
+recorded against that report and the run continues; the exit code reports the
+worst outcome so a scheduler still alerts. `--status` says which report failed
+and, when the others are fine, that it is that report's own problem rather than
+the session — the distinction that decides whether you fix a selector or just
+sign in again.
+
+`REPORT_SLUG` in `.env` no longer decides what a run covers. It only names a
+default for single-report commands. A stale slug quietly exporting one report
+out of nine would be the worst kind of failure: silent and plausible.
+
+Retire a report with `"enabled": false` rather than deleting it, so what you
+captured about it survives.
+
+### Relationship to the Node exporter
+
+`scripts/export-extendedreach.mjs` in this repository pulls fourteen reports
+into `data/exports` for the dashboard and overlaps with this tool. Now that
+both are multi-report, decide which one owns exporting — running both means two
+browser sessions on the same account and two definitions of "today's export".
 
 See `docs/extendedreach-audit.md` for what the portal does and does not offer
 (no API, no report scheduling, one-click exports only), and `CLAUDE.md` for

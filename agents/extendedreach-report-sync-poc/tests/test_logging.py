@@ -92,3 +92,30 @@ def test_the_run_log_file_is_not_world_readable(tmp_path):
 def test_every_status_used_by_the_cli_is_declared():
     assert set(logging_utils.ALL_STATUSES) == {
         "success", "skipped", "failed", "requires_human_login"}
+
+
+def test_numeric_arguments_survive_redaction(caplog):
+    """Coercing every argument to a string broke %d formatting, which loses the
+    whole message -- the opposite of what a log is for."""
+    import logging
+
+    logger = logging.getLogger("redact_numeric_test")
+    logger.handlers.clear()
+    logger.addFilter(logging_utils.RedactingFilter())
+    logger.setLevel(logging.INFO)
+    with caplog.at_level(logging.INFO, logger="redact_numeric_test"):
+        logger.info("Run %s starting: %d report(s)", "abc123", 9)
+    assert "9 report(s)" in caplog.text
+
+
+def test_string_arguments_are_still_redacted(caplog):
+    import logging
+
+    logger = logging.getLogger("redact_string_test")
+    logger.handlers.clear()
+    logger.addFilter(logging_utils.RedactingFilter())
+    logger.setLevel(logging.INFO)
+    with caplog.at_level(logging.INFO, logger="redact_string_test"):
+        logger.info("contact %s", "a.b@example.org")
+    assert "a.b@example.org" not in caplog.text
+    assert REDACTED in caplog.text

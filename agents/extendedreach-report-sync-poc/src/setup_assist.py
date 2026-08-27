@@ -136,111 +136,168 @@ def _choose(candidates: list[dict[str, Any]], what: str) -> Optional[str]:
         print("  Not one of the numbers listed.")
 
 
-def run_setup_assist(cfg, log, out_path: Path) -> int:
+def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
+                     live_path: Optional[Path] = None) -> int:
     """Walk the operator through capturing what workflow.json needs.
 
-    Returns 0 on success. Writes a draft workflow file; it never overwrites an
-    existing one in place.
+    Adds ONE report per run and keeps everything already captured. With nine
+    reports to configure, a version that rewrote the file each time would throw
+    away the previous eight, and would do it silently.
     """
     from src.browser_worker import BrowserWorker
+
+    slug = (slug or cfg.report_slug or "").strip()
+
+    # Start from what is already configured, so earlier reports survive.
+    base_path = None
+    for candidate in (live_path, out_path):
+        if candidate and candidate.exists():
+            base_path = candidate
+            break
+    if base_path is None:
+        base_path = out_path.parent / "workflow.example.json"
+
+    document = json.loads(base_path.read_text(encoding="utf-8"))
+    document = _strip_comments(document)
+    document.setdefault("reports", {})
+    existing = [k for k in document["reports"] if not _PLACEHOLDER_SLUG(k)]
 
     print("\n" + "=" * 70)
     print("  Setup assistant")
     print()
     print("  This opens a browser and watches. It clicks nothing, downloads")
     print("  nothing, and changes nothing in the portal. You drive.")
+    if existing:
+        print()
+        print(f"  Already configured: {', '.join(existing)}")
+        print("  This run adds one more; the others are kept.")
     print("=" * 70)
+
+    if not slug:
+        slug = input("\n  Short name for the report you are adding "
+                     "(e.g. pastdue_case): ").strip()
+    if not slug:
+        print("\n  No name given. Nothing was written.\n")
+        return 1
+    if slug in document["reports"]:
+        answer = input(f"\n  {slug!r} is already configured. Replace it? "
+                       "(y/N) ").strip().lower()
+        if answer != "y":
+            print("\n  Left as it was. Nothing was written.\n")
+            return 0
 
     with BrowserWorker(cfg, log, headed=True) as worker:
         page = worker.page
         worker.goto(cfg.base_url)
 
         # -- step 1: sign in --------------------------------------------
-        print("\n  STEP 1 of 3 — Sign in")
-        print("  Sign in in the browser window, including MFA if asked.")
-        print("  Nothing here types anything for you.")
-        input("\n  Press Enter once you can see the ExtendedReach home page. ")
-
-        signed_in = _scan(page, SIGNED_IN_TEXT)
-        auth_selector = _choose(
-            signed_in, "element that only appears when you are signed in "
-                       "(a Sign Out link is the usual one)")
+        print("\n  STEP 1 of 3 - Sign in")
+        if _is_configured(document.get("auth", {}).get("authenticated_selector")):
+            print("  Sign-in was captured on an earlier run. Just sign in if")
+            print("  the browser asks; nothing to choose here.")
+            input("\n  Press Enter once you can see the home page. ")
+            auth_selector = document["auth"]["authenticated_selector"]
+        else:
+            print("  Sign in in the browser window, including MFA if asked.")
+            print("  Nothing here types anything for you.")
+            input("\n  Press Enter once you can see the ExtendedReach home page. ")
+            signed_in = _scan(page, SIGNED_IN_TEXT)
+            auth_selector = _choose(
+                signed_in, "element that only appears when you are signed in "
+                           "(a Sign Out link is the usual one)")
 
         # -- step 2: the report -----------------------------------------
-        print("\n  STEP 2 of 3 — Open the report")
-        print("  Navigate to the ONE report you want exported automatically.")
-        print("  Apply any filters you want it to use every time.")
+        print(f"\n  STEP 2 of 3 - Open the report you want to call '{slug}'")
+        print("  Navigate to it and apply any filters it should always use.")
         input("\n  Press Enter once the report is on screen. ")
 
         report_url = page.url
         print(f"\n  Captured report URL:\n    {report_url}")
 
         # -- step 3: the export control ---------------------------------
-        print("\n  STEP 3 of 3 — Identify the export control")
+        print("\n  STEP 3 of 3 - Identify the export control")
         print("  Do NOT click it. Just identify it below.")
         export_candidates = _scan(page, EXPORT_TEXT)
         export_selector = _choose(export_candidates, "export/Excel control")
 
-        # A best-effort look for a challenge field. Usually absent while
-        # signed in, which is why it stays a TODO rather than a guess.
         mfa_candidates = _scan(page, MFA_HINT, roles=("input",))
 
-    # -- write the draft --------------------------------------------------
-    example = json.loads(
-        (out_path.parent / "workflow.example.json").read_text(encoding="utf-8"))
+    # -- merge into the document ------------------------------------------
+    document.setdefault("auth", {})
+    if auth_selector:
+        document["auth"]["authenticated_selector"] = auth_selector
+    document["auth"].setdefault("login_form_selector", "")
+    if mfa_candidates and not _is_configured(
+            (document["auth"].get("mfa_selectors") or [None])[0]):
+        document["auth"]["mfa_selectors"] = [c["selector"] for c in mfa_candidates[:3]]
+    document["auth"].setdefault("captcha_selectors", [
+        "iframe[title*='recaptcha' i]", "iframe[src*='hcaptcha' i]"])
+    document.setdefault("safety", {
+        "url_denylist_substrings": [
+            "delete", "remove", "destroy", "edit", "update", "save", "submit",
+            "approve", "reject", "create", "new", "insert", "merge", "archive"],
+        "screenshot_safe_url_substrings": ["/login", "/signin", "/error", "/denied"],
+    })
 
-    # The example's "$comment" blocks explain how to fill each field in. Once
-    # the fields are filled they are just noise, and they contain the word
-    # TODO, which would make the setup checklist read as permanently unfinished.
-    def strip_comments(node):
-        if isinstance(node, dict):
-            return {k: strip_comments(v) for k, v in node.items()
-                    if not k.startswith("$")}
-        if isinstance(node, list):
-            return [strip_comments(v) for v in node]
-        return node
+    # Drop the example's placeholder report the first time a real one is added.
+    for key in [k for k in document["reports"] if _PLACEHOLDER_SLUG(k)]:
+        document["reports"].pop(key)
 
-    example = strip_comments(example)
+    document["reports"][slug] = {
+        "enabled": True,
+        "description": f"TODO(operator): what {slug} is, in plain words.",
+        "navigation": {"mode": "direct_url", "direct_url": report_url},
+        "filters": [],
+        "export": ({"selector": export_selector} if export_selector
+                   else {"selector": "TODO_CSS_SELECTOR_FOR_EXPORT_CONTROL"}),
+        "validation": {
+            "expected_csv_headers": [],
+        },
+    }
 
-    example["auth"]["authenticated_selector"] = auth_selector or \
-        "TODO_CSS_SELECTOR_VISIBLE_ONLY_WHEN_SIGNED_IN"
-    if mfa_candidates:
-        example["auth"]["mfa_selectors"] = [c["selector"] for c in mfa_candidates[:3]]
-
-    slug = cfg.report_slug or "report_one"
-    report = example["reports"].pop("TODO_REPORT_SLUG", {})
-    report["enabled"] = True
-    report["navigation"] = {"mode": "direct_url", "direct_url": report_url}
-    report["filters"] = []
-    report["export"] = ({"selector": export_selector} if export_selector
-                        else {"selector": "TODO_CSS_SELECTOR_FOR_EXPORT_CONTROL"})
-    report.pop("apply_filters_control", None)
-    example["reports"] = {slug: report}
-
-    out_path.write_text(json.dumps(example, indent=2) + "\n", encoding="utf-8")
+    out_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
     print("\n" + "=" * 70)
     print(f"  Draft written to {out_path}")
+    print(f"  Reports now configured: {', '.join(document['reports'])}")
     print()
     remaining = []
     if not auth_selector:
         remaining.append("auth.authenticated_selector")
     if not export_selector:
-        remaining.append("the export control selector")
-    if not mfa_candidates:
-        remaining.append("auth.mfa_selectors (expected — no challenge is on "
-                         "screen while you are signed in; fill it from the "
-                         "login page, or leave it and the run will still stop "
-                         "safely, just less specifically)")
-    if remaining:
-        print("  Still to fill in by hand:")
-        for item in remaining:
-            print(f"    - {item}")
-    else:
-        print("  Everything workflow.json needs was captured.")
+        remaining.append(f"the export control for {slug}")
+    remaining.append(f"reports.{slug}.validation.expected_csv_headers "
+                     "(the column names, after you download it once)")
+    print("  Still to fill in:")
+    for item in remaining:
+        print(f"    - {item}")
     print()
     print("  Review the file, then:")
-    print("    cp config/workflow.draft.json config/workflow.json")
-    print("    ./.venv/bin/python -m src.main --validate-config")
+    print(f"    cp {out_path.name} workflow.json      (inside config/)")
+    print("    ./.venv/bin/python -m src.main --list-reports")
+    print()
+    print("  Run this again for the next report.")
     print("=" * 70 + "\n")
     return 0
+
+
+def _strip_comments(node):
+    """Drop the example file's "$comment" guidance.
+
+    Once a field is filled the guidance is only noise, and it contains the word
+    TODO, which would make the setup checklist read as permanently unfinished.
+    """
+    if isinstance(node, dict):
+        return {k: _strip_comments(v) for k, v in node.items()
+                if not k.startswith("$")}
+    if isinstance(node, list):
+        return [_strip_comments(v) for v in node]
+    return node
+
+
+def _PLACEHOLDER_SLUG(key: str) -> bool:
+    return "TODO" in str(key).upper()
+
+
+def _is_configured(value) -> bool:
+    return bool(value) and "TODO" not in str(value).upper()

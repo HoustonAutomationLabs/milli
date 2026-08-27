@@ -190,19 +190,57 @@ def _load_runs(cfg) -> list[dict]:
     return records
 
 
-def _check_dry_run(runs: list[dict]) -> Step:
-    if any(r.get("status") == "success" and r.get("dry_run") for r in runs):
+def _succeeded_slugs(runs: list[dict], *, dry: bool) -> set[str]:
+    """Reports that have completed successfully, one way or the other.
+
+    A skipped run counts: "already in the folder for today" means the upload
+    happened, on an earlier run.
+    """
+    good = {"success"} if dry else {"success", "skipped"}
+    return {
+        r.get("report_slug", "")
+        for r in runs
+        if r.get("status") in good
+        and bool(r.get("dry_run")) == dry
+        and (dry or r.get("drive_file_id"))
+    }
+
+
+def _check_dry_run(runs: list[dict], expected: Optional[set[str]] = None) -> Step:
+    done = _succeeded_slugs(runs, dry=True)
+    if expected:
+        missing = expected - done
+        if not missing:
+            return Step(f"Test run passed for all {len(expected)} report(s)", DONE)
+        if done:
+            return Step("Test run passed (no upload)", TODO,
+                        why=f"{len(done)} of {len(expected)} report(s) have "
+                            f"passed a dry run; still to prove: "
+                            f"{', '.join(sorted(missing)[:4])}"
+                            + (" ..." if len(missing) > 4 else ""),
+                        command="./scripts/run_once.sh --dry-run")
+    elif done:
         return Step("Test run passed (no upload)", DONE)
     return Step("Test run passed (no upload)", TODO,
                 why="no dry run has completed successfully yet",
                 command="./scripts/run_once.sh --dry-run",
                 detail="opens a browser; you sign in; downloads and checks the "
-                       "file but uploads nothing")
+                       "files but uploads nothing")
 
 
-def _check_real_run(runs: list[dict]) -> Step:
-    if any(r.get("status") == "success" and not r.get("dry_run")
-           and r.get("drive_file_id") for r in runs):
+def _check_real_run(runs: list[dict], expected: Optional[set[str]] = None) -> Step:
+    done = _succeeded_slugs(runs, dry=False)
+    if expected:
+        missing = expected - done
+        if not missing:
+            return Step(f"All {len(expected)} report(s) reached Google Drive", DONE)
+        if done:
+            return Step("Every report reached Google Drive", TODO,
+                        why=f"{len(done)} of {len(expected)} uploaded; still to "
+                            f"land: {', '.join(sorted(missing)[:4])}"
+                            + (" ..." if len(missing) > 4 else ""),
+                        command="./scripts/run_once.sh")
+    elif done:
         return Step("Real run reached Google Drive", DONE)
     return Step("Real run reached Google Drive", TODO,
                 why="no run has uploaded a file yet",
@@ -239,6 +277,7 @@ def run_doctor(env_file: Optional[str] = None) -> int:
         load_error = type(exc).__name__
 
     runs = _load_runs(cfg)
+    expected = ({r.slug for r in cfg.enabled_reports()} if cfg else set()) or None
 
     steps = [
         _check_dependencies(),
@@ -247,8 +286,8 @@ def run_doctor(env_file: Optional[str] = None) -> int:
         _check_workflow(root),
         _check_config(cfg, load_error),
         _check_google(cfg),
-        _check_dry_run(runs),
-        _check_real_run(runs),
+        _check_dry_run(runs, expected),
+        _check_real_run(runs, expected),
         _check_schedule(),
     ]
 

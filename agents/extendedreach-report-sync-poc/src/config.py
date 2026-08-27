@@ -88,16 +88,52 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass
 class ReportConfig:
-    """One report. The POC implements exactly one; the shape is a map so more
-    can be added without restructuring."""
+    """One report.
+
+    Each report carries its own validation rules. That matters once there is
+    more than one: nine ExtendedReach reports have nine different sets of
+    columns, and a single global header list would either be empty (checking
+    nothing) or wrong for eight of them.
+    """
 
     slug: str
     description: str = ""
+    enabled: bool = True
     navigation: dict[str, Any] = field(default_factory=dict)
     filters: list[dict[str, Any]] = field(default_factory=list)
     apply_filters_control: dict[str, Any] = field(default_factory=dict)
     export: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] = field(default_factory=dict)
+    drive_folder_id: str = ""          # optional; falls back to the global one
+
+    # -- per-report validation, falling back to the global settings --------
+
+    def expected_headers(self, fallback: list[str]) -> list[str]:
+        """Columns this report must have.
+
+        `expected_csv_headers` in the workflow file wins. `expected_csv_headers_env`
+        names an environment variable instead, which keeps a long column list out
+        of a file that gets read by people. An explicit empty list means "do not
+        check this report's columns" and is honoured, so it is distinguished from
+        the key being absent.
+        """
+        declared = self.validation.get("expected_csv_headers")
+        if isinstance(declared, list):
+            return [str(h).strip() for h in declared if str(h).strip()]
+        env_name = self.validation.get("expected_csv_headers_env")
+        if env_name:
+            raw = os.getenv(env_name, "").strip()
+            if raw:
+                return [part.strip() for part in raw.split(",") if part.strip()]
+            return []
+        return fallback
+
+    def min_bytes(self, fallback: int) -> int:
+        value = self.validation.get("min_file_bytes")
+        try:
+            return int(value) if value is not None else fallback
+        except (TypeError, ValueError):
+            return fallback
 
 
 @dataclass
@@ -111,7 +147,7 @@ class AppConfig:
 
     workflow_path: Optional[Path] = None
     workflow: dict[str, Any] = field(default_factory=dict)
-    report: Optional[ReportConfig] = None
+    reports: dict[str, ReportConfig] = field(default_factory=dict)
     report_url_override: Optional[str] = None
 
     min_file_bytes: int = 1024
@@ -139,6 +175,39 @@ class AppConfig:
     # ---- derived helpers -------------------------------------------------
 
     @property
+    def report(self) -> Optional[ReportConfig]:
+        """The single report named by REPORT_SLUG, when there is one.
+
+        Kept so single-report callers read naturally. With several reports
+        configured and no REPORT_SLUG set, this is the first enabled one; use
+        `selected_reports()` for anything that should cover them all.
+        """
+        if self.report_slug and self.report_slug in self.reports:
+            return self.reports[self.report_slug]
+        enabled = self.enabled_reports()
+        return enabled[0] if enabled else None
+
+    def enabled_reports(self) -> list[ReportConfig]:
+        return [r for r in self.reports.values() if r.enabled]
+
+    def selected_reports(self, only: Optional[str] = None) -> list[ReportConfig]:
+        """Which reports a run should cover.
+
+        `only` names one report explicitly. Otherwise every enabled report runs,
+        which is the point of having more than one. REPORT_SLUG no longer
+        narrows a run -- it only names the default for single-report commands --
+        because a stale slug silently exporting one report out of nine would be
+        the worst kind of failure: quiet and plausible.
+        """
+        if only:
+            report = self.reports.get(only)
+            return [report] if report else []
+        return self.enabled_reports()
+
+    def drive_folder_for(self, report: ReportConfig) -> str:
+        return report.drive_folder_id or self.drive_folder_id
+
+    @property
     def auth(self) -> dict[str, Any]:
         return self.workflow.get("auth", {}) if self.workflow else {}
 
@@ -146,11 +215,12 @@ class AppConfig:
     def safety(self) -> dict[str, Any]:
         return self.workflow.get("safety", {}) if self.workflow else {}
 
-    def filter_values(self) -> dict[str, str]:
+    def filter_values(self, report: Optional[ReportConfig] = None) -> dict[str, str]:
         """Resolved filter values, keyed by filter name. Values that fail the
         pattern are omitted here and reported by validate()."""
+        report = report or self.report
         resolved: dict[str, str] = {}
-        for spec in (self.report.filters if self.report else []):
+        for spec in (report.filters if report else []):
             env_name = spec.get("value_env")
             if not env_name:
                 continue
@@ -186,21 +256,21 @@ def load(env_file: Optional[str] = None,
                 ) from None
 
     slug = os.getenv("REPORT_SLUG", "").strip()
-    report = _select_report(workflow, slug)
+    reports = _build_reports(workflow)
 
     extensions = {e.lower().lstrip(".") for e in
                   _split_csv(os.getenv("ALLOWED_EXTENSIONS")) } or set(APPROVED_EXTENSIONS)
 
     cfg = AppConfig(
         base_url=os.getenv("EXTENDEDREACH_BASE_URL", "").strip(),
-        report_slug=slug or (report.slug if report else ""),
+        report_slug=slug,
         browser_profile_dir=path_env("BROWSER_PROFILE_DIR", "~/er-sync/profile"),
         download_dir=path_env("DOWNLOAD_DIR", "~/er-sync/downloads"),
         log_dir=path_env("LOG_DIR", "~/er-sync/logs"),
         screenshot_dir=path_env("SCREENSHOT_DIR", "~/er-sync/screenshots"),
         workflow_path=workflow_path,
         workflow=workflow,
-        report=report,
+        reports=reports,
         report_url_override=os.getenv("EXTENDEDREACH_REPORT_URL", "").strip() or None,
         min_file_bytes=_env_int("MIN_FILE_BYTES", 1024),
         allowed_extensions=extensions,
@@ -221,31 +291,48 @@ def load(env_file: Optional[str] = None,
     return cfg
 
 
-def _select_report(workflow: dict[str, Any], slug: str) -> Optional[ReportConfig]:
-    reports = (workflow or {}).get("reports", {})
-    if not isinstance(reports, dict) or not reports:
-        return None
+def _build_reports(workflow: dict[str, Any]) -> dict[str, ReportConfig]:
+    """Every report in the workflow file, enabled or not.
 
-    enabled = {k: v for k, v in reports.items()
-               if isinstance(v, dict) and v.get("enabled", False)}
-    chosen_key: Optional[str] = None
-    if slug and slug in reports:
-        chosen_key = slug
-    elif len(enabled) == 1:
-        chosen_key = next(iter(enabled))
-    if chosen_key is None:
-        return None
+    Disabled ones are kept so `--list-reports` can show them and so a typo in a
+    slug is reported as "disabled" rather than "no such report".
+    """
+    raw = (workflow or {}).get("reports", {})
+    if not isinstance(raw, dict):
+        return {}
 
-    spec = reports[chosen_key]
-    return ReportConfig(
-        slug=chosen_key,
-        description=spec.get("description", ""),
-        navigation=spec.get("navigation", {}) or {},
-        filters=[f for f in spec.get("filters", []) or [] if isinstance(f, dict)],
-        apply_filters_control=spec.get("apply_filters_control", {}) or {},
-        export=spec.get("export", {}) or {},
-        validation=spec.get("validation", {}) or {},
-    )
+    built: dict[str, ReportConfig] = {}
+    for slug, spec in raw.items():
+        if not isinstance(spec, dict):
+            continue
+        built[slug] = ReportConfig(
+            slug=slug,
+            description=spec.get("description", ""),
+            enabled=bool(spec.get("enabled", False)),
+            navigation=spec.get("navigation", {}) or {},
+            filters=[f for f in spec.get("filters", []) or [] if isinstance(f, dict)],
+            apply_filters_control=spec.get("apply_filters_control", {}) or {},
+            export=spec.get("export", {}) or {},
+            validation=spec.get("validation", {}) or {},
+            drive_folder_id=_resolve_drive_folder(spec),
+        )
+    return built
+
+
+def _resolve_drive_folder(spec: dict[str, Any]) -> str:
+    """A per-report Drive folder, if one is configured.
+
+    `drive_folder_id_env` is preferred over a literal id: folder ids are not
+    secret, but keeping them in .env means the workflow file can be shared or
+    reviewed without carrying the destination of real records.
+    """
+    env_name = spec.get("drive_folder_id_env")
+    if env_name:
+        value = os.getenv(env_name, "").strip()
+        if value and not _PLACEHOLDER.search(value):
+            return value
+    literal = str(spec.get("drive_folder_id", "") or "").strip()
+    return "" if _PLACEHOLDER.search(literal) else literal
 
 
 def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
@@ -267,9 +354,11 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
     elif _PLACEHOLDER.search(cfg.base_url):
         err("EXTENDEDREACH_BASE_URL", "still contains a TODO placeholder")
 
-    if not cfg.report_slug:
-        err("REPORT_SLUG", "not set")
-    elif _PLACEHOLDER.search(cfg.report_slug):
+    # REPORT_SLUG is optional. It names a default for single-report commands;
+    # it does not decide what a scheduled run covers, because a stale slug
+    # quietly exporting one report out of nine would be a silent, plausible
+    # failure. It is only an error when it names something that does not exist.
+    if cfg.report_slug and _PLACEHOLDER.search(cfg.report_slug):
         err("REPORT_SLUG", "still contains a TODO placeholder")
 
     # -- workflow ----------------------------------------------------------
@@ -278,18 +367,31 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
     elif not cfg.workflow_path.exists():
         err("WORKFLOW_FILE", f"no such file: {cfg.workflow_path.name}")
 
-    reports = (cfg.workflow or {}).get("reports", {})
-    enabled = [k for k, v in reports.items()
-               if isinstance(v, dict) and v.get("enabled", False)]
-    if len(enabled) > 1:
+    enabled = cfg.enabled_reports()
+    if not cfg.reports:
+        err("workflow.reports", "no reports are defined")
+    elif not enabled:
         err("workflow.reports",
-            f"{len(enabled)} reports enabled; this POC supports exactly one")
+            f"{len(cfg.reports)} report(s) defined but none is enabled")
 
-    if cfg.report is None:
-        if reports:
-            err("workflow.reports", f"no report matches REPORT_SLUG={cfg.report_slug!r}")
-    else:
-        _validate_report(cfg, problems)
+    if cfg.report_slug and cfg.report_slug not in cfg.reports:
+        err("REPORT_SLUG",
+            f"{cfg.report_slug!r} matches no report in the workflow file")
+
+    # Every enabled report is validated. One broken report should be named as
+    # itself, not hidden behind whichever happened to be checked first.
+    for report in enabled:
+        _validate_report(cfg, report, problems)
+
+    seen_folders: dict[str, str] = {}
+    for report in enabled:
+        folder = cfg.drive_folder_for(report)
+        if folder and folder in seen_folders and seen_folders[folder] != report.slug:
+            # Not an error: several reports landing in one folder is a normal
+            # choice. Worth saying once, because the duplicate check is keyed on
+            # report slug plus date, so they will not collide.
+            pass
+        seen_folders.setdefault(folder, report.slug)
 
     auth = cfg.auth
     if not auth.get("authenticated_selector"):
@@ -329,19 +431,21 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
     if not cfg.allowed_extensions:
         err("ALLOWED_EXTENSIONS", "empty")
 
-    wants_csv = "csv" in cfg.allowed_extensions
-    placeholders = [h for h in cfg.expected_csv_headers if _PLACEHOLDER.search(h)]
-    if wants_csv and not cfg.expected_csv_headers:
-        warn("EXPECTED_CSV_HEADERS",
-             "not set; a CSV export will pass validation on size alone")
-    if placeholders:
-        err("EXPECTED_CSV_HEADERS",
-            f"{len(placeholders)} header(s) still contain a TODO placeholder")
+    for report in enabled:
+        headers = report.expected_headers(cfg.expected_csv_headers)
+        placeholders = [h for h in headers if _PLACEHOLDER.search(h)]
+        if placeholders:
+            err(f"reports.{report.slug}.expected_csv_headers",
+                f"{len(placeholders)} header(s) still contain a TODO placeholder")
+        elif not headers:
+            warn(f"reports.{report.slug}.expected_csv_headers",
+                 "not set; this report will pass validation on size alone")
 
     # -- filters -----------------------------------------------------------
-    for spec in (cfg.report.filters if cfg.report else []):
+    for report in enabled:
+      for spec in report.filters:
         env_name = spec.get("value_env")
-        name = spec.get("name", env_name or "?")
+        name = f"{report.slug}.{spec.get('name', env_name or '?')}"
         if not env_name:
             err(f"filter[{name}]", "has no value_env")
             continue
@@ -372,14 +476,14 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
     return problems
 
 
-def _validate_report(cfg: AppConfig, problems: list[Problem]) -> None:
-    report = cfg.report
-    assert report is not None
+def _validate_report(cfg: AppConfig, report: ReportConfig,
+                     problems: list[Problem]) -> None:
     prefix = f"reports.{report.slug}"
 
     nav = report.navigation or {}
     mode = nav.get("mode", "direct_url")
-    if cfg.report_url_override:
+    single = len(cfg.enabled_reports()) == 1
+    if cfg.report_url_override and single:
         if _PLACEHOLDER.search(cfg.report_url_override):
             problems.append(Problem("EXTENDEDREACH_REPORT_URL",
                                     "still a TODO placeholder"))

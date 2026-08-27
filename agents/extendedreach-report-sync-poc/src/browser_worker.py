@@ -229,17 +229,20 @@ class BrowserWorker:
 
     # -- the report --------------------------------------------------------
 
-    def navigate_to_report(self) -> None:
-        report = self.cfg.report
+    def navigate_to_report(self, report=None) -> None:
+        report = report or self.cfg.report
         if report is None:
             raise BrowserWorkerError(CATEGORY_NAV_FAILED, "no report configured")
 
-        # A direct URL from .env wins, then the workflow file's direct_url,
-        # then menu steps.
-        url = self.cfg.report_url_override or (report.navigation or {}).get("direct_url")
+        # A direct URL from .env wins, but only when a single report is
+        # configured: with several, one override would send every report to the
+        # same page and quietly produce nine copies of one export.
+        single = len(self.cfg.enabled_reports()) == 1
+        override = self.cfg.report_url_override if single else None
+        url = override or (report.navigation or {}).get("direct_url")
         mode = (report.navigation or {}).get("mode", "direct_url")
 
-        if self.cfg.report_url_override or (mode == "direct_url" and url):
+        if override or (mode == "direct_url" and url):
             self.goto(url)
         elif mode == "steps":
             for index, step in enumerate((report.navigation or {}).get("steps", [])):
@@ -285,18 +288,18 @@ class BrowserWorker:
         elif action in {"select_option", "fill_filter", "check", "uncheck"}:
             self._apply_filter_step(step)
 
-    def apply_filters(self) -> None:
+    def apply_filters(self, report=None) -> None:
         """Apply the predefined, non-sensitive filters from configuration.
 
         Values are re-checked here against the same pattern config validation
         used. The check is repeated deliberately: this is the last point
         before text is typed into a live portal.
         """
-        report = self.cfg.report
+        report = report or self.cfg.report
         if report is None or not report.filters:
             return
 
-        resolved = self.cfg.filter_values()
+        resolved = self.cfg.filter_values(report)
         applied = 0
         for spec in report.filters:
             name = spec.get("name", "")
@@ -364,10 +367,12 @@ class BrowserWorker:
         name = export.get("name", "")
         return self.page.get_by_role(role, name=name).first
 
-    def download_report(self, when: Optional[datetime] = None) -> DownloadResult:
+    def download_report(self, report=None,
+                        when: Optional[datetime] = None) -> DownloadResult:
         """Click the export control and save the download under our own name."""
-        report = self.cfg.report
-        assert report is not None
+        report = report or self.cfg.report
+        if report is None:
+            raise BrowserWorkerError(CATEGORY_EXPORT_CONTROL, "no report configured")
         export = report.export or {}
         locator = self._export_locator(export)
 
@@ -400,7 +405,7 @@ class BrowserWorker:
                 "Download extension is '%s' but the workflow file expects '%s'; "
                 "using the actual one", suggested_ext, declared)
 
-        filename = build_filename(self.cfg.report_slug, suggested_ext, when)
+        filename = build_filename(report.slug, suggested_ext, when)
         destination = self.cfg.download_dir / filename
         download.save_as(str(destination))
         self.log.info("Saved download as %s", filename)
@@ -414,7 +419,8 @@ class BrowserWorker:
 
     # -- diagnostics -------------------------------------------------------
 
-    def capture_failure_diagnostic(self, when: Optional[datetime] = None) -> Optional[Path]:
+    def capture_failure_diagnostic(self, report_slug: str = "run",
+                                   when: Optional[datetime] = None) -> Optional[Path]:
         """Opt-in screenshot, only on a page the workflow marks safe.
 
         A screenshot of a report page is a screenshot of case data, so the
@@ -440,7 +446,7 @@ class BrowserWorker:
         self.cfg.screenshot_dir.mkdir(parents=True, exist_ok=True)
         when = when or datetime.now()
         path = self.cfg.screenshot_dir / (
-            f"failure_{self.cfg.report_slug}_{when.strftime('%Y-%m-%d_%H%M%S')}.png")
+            f"failure_{report_slug}_{when.strftime('%Y-%m-%d_%H%M%S')}.png")
         try:
             self.page.screenshot(path=str(path), full_page=False)
         except PlaywrightError:

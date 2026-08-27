@@ -85,6 +85,13 @@ def safe_url(url: Optional[str]) -> str:
     return re.sub(r"[?#].*$", "", str(url))
 
 
+def _redact_arg(value):
+    """Redact strings; leave numbers and other types for the format spec."""
+    if isinstance(value, str):
+        return redact(value)
+    return value
+
+
 class RedactingFilter(logging.Filter):
     """Applies `redact` to the formatted message and to every argument."""
 
@@ -92,10 +99,14 @@ class RedactingFilter(logging.Filter):
         if isinstance(record.msg, str):
             record.msg = redact(record.msg)
         if record.args:
+            # Only strings are redacted. Coercing everything to str broke any
+            # message using %d or %f: the number arrived as a string and the
+            # whole log line failed to format, which loses the message
+            # entirely -- the opposite of what a log is for.
             if isinstance(record.args, dict):
-                record.args = {k: redact(str(v)) for k, v in record.args.items()}
+                record.args = {k: _redact_arg(v) for k, v in record.args.items()}
             else:
-                record.args = tuple(redact(str(a)) for a in record.args)
+                record.args = tuple(_redact_arg(a) for a in record.args)
         # Tracebacks quote source lines and exception values, both of which can
         # carry page text. Keep the type, drop the rest.
         if record.exc_info:

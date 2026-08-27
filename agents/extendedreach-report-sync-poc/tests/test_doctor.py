@@ -136,3 +136,59 @@ def test_the_schedule_step_applies_on_macos(monkeypatch, tmp_path):
     step = doctor._check_schedule()
     assert step.state == TODO
     assert "install_schedule.sh" in step.command
+
+
+# -- multi-report progress --------------------------------------------------
+
+NINE = {f"report_{i}" for i in range(9)}
+
+
+def _run(slug, status="success", dry=False, drive="1AbC"):
+    return {"report_slug": slug, "status": status, "dry_run": dry,
+            "drive_file_id": drive if not dry else None}
+
+
+def test_partial_progress_names_what_is_left(tmp_path):
+    """With nine reports, "no run has uploaded a file yet" is wrong once eight
+    have. The step must say which one is outstanding."""
+    runs = [_run(f"report_{i}") for i in range(8)]
+    step = doctor._check_real_run(runs, NINE)
+    assert step.state == TODO
+    assert "8 of 9" in step.why
+    assert "report_8" in step.why
+
+
+def test_all_reports_uploaded_completes_the_step():
+    runs = [_run(f"report_{i}") for i in range(9)]
+    assert doctor._check_real_run(runs, NINE).state == DONE
+
+
+def test_a_skipped_upload_counts_as_done():
+    """"Already in the folder for today" means the upload happened earlier."""
+    runs = [_run(f"report_{i}", status="skipped") for i in range(9)]
+    assert doctor._check_real_run(runs, NINE).state == DONE
+
+
+def test_a_dry_run_never_completes_the_real_run_step():
+    runs = [_run(f"report_{i}", dry=True) for i in range(9)]
+    assert doctor._check_real_run(runs, NINE).state == TODO
+
+
+def test_a_success_without_a_drive_id_does_not_count():
+    runs = [_run(f"report_{i}", drive=None) for i in range(9)]
+    assert doctor._check_real_run(runs, NINE).state == TODO
+
+
+def test_dry_run_progress_is_tracked_per_report():
+    runs = [_run(f"report_{i}", dry=True) for i in range(5)]
+    step = doctor._check_dry_run(runs, NINE)
+    assert step.state == TODO
+    assert "5 of 9" in step.why
+
+
+def test_only_a_handful_of_missing_reports_are_listed():
+    """Nine slugs on one line is unreadable; the list truncates."""
+    step = doctor._check_real_run([], NINE)
+    assert step.state == TODO
+    step = doctor._check_real_run([_run("report_0")], NINE)
+    assert step.why.endswith("...")

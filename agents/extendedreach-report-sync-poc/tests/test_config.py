@@ -75,7 +75,7 @@ def _config(tmp_path: Path, **overrides) -> AppConfig:
         screenshot_dir=outside / "screenshots",
         workflow_path=workflow_path,
         workflow=workflow,
-        report=config_module._select_report(workflow, "pastdue_case"),
+        reports=config_module._build_reports(workflow),
         expected_csv_headers=["Case #", "Status"],
         drive_folder_id="1AbCdEfGhIjKlMnOpQrStUvWxYz",
         google_credentials_file=creds,
@@ -105,13 +105,21 @@ def test_require_valid_returns_the_config_when_it_is_valid(tmp_path):
 
 
 def test_require_valid_raises_and_lists_every_problem_at_once(tmp_path):
-    cfg = _config(tmp_path, base_url="", report_slug="", drive_folder_id="")
+    cfg = _config(tmp_path, base_url="", drive_folder_id="",
+                  report_slug="not_a_report")
     with pytest.raises(ConfigError) as excinfo:
         require_valid(cfg)
     message = str(excinfo.value)
     assert "EXTENDEDREACH_BASE_URL" in message
     assert "REPORT_SLUG" in message
     assert "GOOGLE_DRIVE_FOLDER_ID" in message
+
+
+def test_an_unset_report_slug_is_not_an_error(tmp_path):
+    """It names a default for single-report commands; it does not decide what a
+    scheduled run covers."""
+    cfg = _config(tmp_path, report_slug="")
+    assert _errors(cfg) == []
 
 
 # -- paths must live outside the repository ---------------------------------
@@ -149,7 +157,7 @@ def test_a_todo_drive_folder_blocks_the_run(tmp_path):
 
 def test_todo_csv_headers_block_the_run(tmp_path):
     cfg = _config(tmp_path, expected_csv_headers=["TODO_COLUMN_ONE"])
-    assert "EXPECTED_CSV_HEADERS" in _keys(_errors(cfg))
+    assert "reports.pastdue_case.expected_csv_headers" in _keys(_errors(cfg))
 
 
 def test_a_placeholder_export_selector_blocks_the_run(tmp_path):
@@ -194,19 +202,157 @@ def test_an_empty_extension_list_is_refused(tmp_path):
 
 # -- one report only --------------------------------------------------------
 
-def test_more_than_one_enabled_report_is_refused(tmp_path):
-    """The POC implements exactly one report; two enabled is a misconfiguration
-    rather than a silent choice of whichever came first."""
+def _multi(tmp_path, count=3, **overrides):
     workflow = json.loads(json.dumps(WORKFLOW))
-    workflow["reports"]["second"] = json.loads(
+    template = workflow["reports"]["pastdue_case"]
+    for index in range(1, count):
+        clone = json.loads(json.dumps(template))
+        clone["navigation"]["direct_url"] = f"/reports/view?id=R{index}"
+        workflow["reports"][f"report_{index}"] = clone
+    return _config(tmp_path, workflow_json=workflow, **overrides)
+
+
+def test_many_enabled_reports_are_allowed(tmp_path):
+    """Nine reports is the actual requirement; more than one is not an error."""
+    cfg = _multi(tmp_path, count=9)
+    assert _errors(cfg) == []
+    assert len(cfg.enabled_reports()) == 9
+
+
+def test_every_enabled_report_runs_by_default(tmp_path):
+    cfg = _multi(tmp_path, count=9)
+    assert len(cfg.selected_reports()) == 9
+
+
+def test_a_stale_report_slug_does_not_narrow_a_run(tmp_path):
+    """REPORT_SLUG naming one report must not quietly export one of nine."""
+    cfg = _multi(tmp_path, count=9, report_slug="pastdue_case")
+    assert len(cfg.selected_reports()) == 9
+
+
+def test_one_report_can_be_selected_explicitly(tmp_path):
+    cfg = _multi(tmp_path, count=9)
+    chosen = cfg.selected_reports("report_3")
+    assert [r.slug for r in chosen] == ["report_3"]
+
+
+def test_selecting_an_unknown_report_selects_nothing(tmp_path):
+    assert _multi(tmp_path).selected_reports("nope") == []
+
+
+def test_disabled_reports_are_kept_but_not_run(tmp_path):
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["retired"] = json.loads(
         json.dumps(workflow["reports"]["pastdue_case"]))
+    workflow["reports"]["retired"]["enabled"] = False
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert "retired" in cfg.reports
+    assert [r.slug for r in cfg.enabled_reports()] == ["pastdue_case"]
+
+
+def test_no_enabled_reports_is_an_error(tmp_path):
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["pastdue_case"]["enabled"] = False
     cfg = _config(tmp_path, workflow_json=workflow)
     assert "workflow.reports" in _keys(_errors(cfg))
 
 
 def test_a_slug_matching_no_report_is_refused(tmp_path):
-    cfg = _config(tmp_path, report_slug="not_a_report", report=None)
-    assert "workflow.reports" in _keys(_errors(cfg))
+    cfg = _config(tmp_path, report_slug="not_a_report")
+    assert "REPORT_SLUG" in _keys(_errors(cfg))
+
+
+def test_a_broken_report_is_named_by_its_own_slug(tmp_path):
+    """With nine reports, "the export selector is missing" is useless unless it
+    says which report."""
+    workflow = json.loads(json.dumps(WORKFLOW))
+    clone = json.loads(json.dumps(workflow["reports"]["pastdue_case"]))
+    clone["export"] = {}
+    workflow["reports"]["broken_one"] = clone
+    cfg = _config(tmp_path, workflow_json=workflow)
+    keys = _keys(_errors(cfg))
+    assert any("broken_one" in k for k in keys)
+    assert not any("pastdue_case" in k for k in keys)
+
+
+# -- per-report validation rules -------------------------------------------
+
+def test_each_report_carries_its_own_expected_columns(tmp_path):
+    """Nine reports have nine different column sets; one global list would be
+    wrong for eight of them."""
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["pastdue_case"]["validation"] = {
+        "expected_csv_headers": ["Case #", "Due Date"]}
+    other = json.loads(json.dumps(workflow["reports"]["pastdue_case"]))
+    other["validation"] = {"expected_csv_headers": ["Home", "Beds"]}
+    workflow["reports"]["openbeds"] = other
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert cfg.reports["pastdue_case"].expected_headers([]) == ["Case #", "Due Date"]
+    assert cfg.reports["openbeds"].expected_headers([]) == ["Home", "Beds"]
+
+
+def test_a_report_without_columns_falls_back_to_the_global_list(tmp_path):
+    cfg = _config(tmp_path)
+    assert cfg.reports["pastdue_case"].expected_headers(["A", "B"]) == ["A", "B"]
+
+
+def test_an_explicit_empty_column_list_means_do_not_check(tmp_path):
+    """Distinct from the key being absent, which falls back."""
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["pastdue_case"]["validation"] = {"expected_csv_headers": []}
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert cfg.reports["pastdue_case"].expected_headers(["A"]) == []
+
+
+def test_a_placeholder_column_blocks_only_its_own_report(tmp_path):
+    workflow = json.loads(json.dumps(WORKFLOW))
+    clone = json.loads(json.dumps(workflow["reports"]["pastdue_case"]))
+    clone["validation"] = {"expected_csv_headers": ["TODO_COLUMN"]}
+    workflow["reports"]["unfinished"] = clone
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert "reports.unfinished.expected_csv_headers" in _keys(_errors(cfg))
+
+
+def test_a_report_can_override_the_minimum_file_size(tmp_path):
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["pastdue_case"]["validation"] = {"min_file_bytes": 50_000}
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert cfg.reports["pastdue_case"].min_bytes(1024) == 50_000
+    assert cfg.reports["pastdue_case"].min_bytes(1024) != 1024
+
+
+def test_a_nonsense_minimum_size_falls_back_rather_than_crashing(tmp_path):
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["pastdue_case"]["validation"] = {"min_file_bytes": "big"}
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert cfg.reports["pastdue_case"].min_bytes(1024) == 1024
+
+
+# -- per-report Drive folders ----------------------------------------------
+
+def test_reports_share_the_global_drive_folder_by_default(tmp_path):
+    cfg = _multi(tmp_path, count=3)
+    folders = {cfg.drive_folder_for(r) for r in cfg.enabled_reports()}
+    assert folders == {cfg.drive_folder_id}
+
+
+def test_a_report_can_be_sent_to_its_own_folder(tmp_path, monkeypatch):
+    monkeypatch.setenv("DRIVE_FOLDER_BEDS", "1BedsFolderIdAbc")
+    workflow = json.loads(json.dumps(WORKFLOW))
+    clone = json.loads(json.dumps(workflow["reports"]["pastdue_case"]))
+    clone["drive_folder_id_env"] = "DRIVE_FOLDER_BEDS"
+    workflow["reports"]["openbeds"] = clone
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert cfg.drive_folder_for(cfg.reports["openbeds"]) == "1BedsFolderIdAbc"
+    assert cfg.drive_folder_for(cfg.reports["pastdue_case"]) == cfg.drive_folder_id
+
+
+def test_an_unset_per_report_folder_falls_back_to_the_global_one(tmp_path, monkeypatch):
+    monkeypatch.delenv("DRIVE_FOLDER_BEDS", raising=False)
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["reports"]["pastdue_case"]["drive_folder_id_env"] = "DRIVE_FOLDER_BEDS"
+    cfg = _config(tmp_path, workflow_json=workflow)
+    assert cfg.drive_folder_for(cfg.reports["pastdue_case"]) == cfg.drive_folder_id
 
 
 # -- read-only guarantee ----------------------------------------------------
@@ -260,7 +406,7 @@ def test_a_rejected_filter_value_blocks_the_run(tmp_path, monkeypatch):
     ]
     monkeypatch.setenv("REPORT_FILTER_WORKER", "Smith, Jane")
     cfg = _config(tmp_path, workflow_json=workflow)
-    assert any("filter[worker]" in p.key for p in _errors(cfg))
+    assert any("filter[pastdue_case.worker]" in p.key for p in _errors(cfg))
 
 
 def test_a_rejected_filter_value_is_never_resolved_for_use(tmp_path, monkeypatch):
@@ -284,7 +430,7 @@ def test_a_required_filter_with_no_value_blocks_the_run(tmp_path, monkeypatch):
     ]
     monkeypatch.delenv("REPORT_FILTER_PROGRAM", raising=False)
     cfg = _config(tmp_path, workflow_json=workflow)
-    assert any("filter[program]" in p.key for p in _errors(cfg))
+    assert any("filter[pastdue_case.program]" in p.key for p in _errors(cfg))
 
 
 # -- warnings ---------------------------------------------------------------
@@ -292,8 +438,9 @@ def test_a_required_filter_with_no_value_blocks_the_run(tmp_path, monkeypatch):
 def test_missing_csv_headers_warn_rather_than_block(tmp_path):
     cfg = _config(tmp_path, expected_csv_headers=[])
     problems = validate(cfg)
-    assert "EXPECTED_CSV_HEADERS" in {p.key for p in problems if p.severity == "warning"}
-    assert "EXPECTED_CSV_HEADERS" not in _keys(_errors(cfg))
+    warnings = {p.key for p in problems if p.severity == "warning"}
+    assert "reports.pastdue_case.expected_csv_headers" in warnings
+    assert _errors(cfg) == []
 
 
 def test_problem_formatting_marks_errors_and_warnings_distinctly():
