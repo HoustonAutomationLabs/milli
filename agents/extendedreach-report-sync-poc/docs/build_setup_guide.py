@@ -242,6 +242,71 @@ def story(toc_pages=None):
     yield Spacer(1, 4)
     yield para("The window answers:", SMALL)
     yield code("hello", output=True)
+    yield Spacer(1, 0.2 * inch)
+    yield para("Terminal on its own, or VS Code?", H2)
+    yield para(
+        "<b>Use VS Code.</b> You will be doing two kinds of work — running "
+        "commands, and editing two settings files — and VS Code does both in "
+        "one window, with a Terminal built into the bottom of it.", BODY)
+    yield para(
+        "There is also a specific trap it avoids. TextEdit, the editor that "
+        "opens by default on a Mac, substitutes curly quotes for plain ones as "
+        "you type. The settings files need plain quotes. The two are almost "
+        "impossible to tell apart on screen:", BODY)
+    # Shown large and in a proportional face on purpose: at body size, and
+    # especially in Courier, the two are genuinely indistinguishable, which is
+    # true to life but teaches the reader nothing.
+    big = S("big", fontName="Helvetica-Bold", fontSize=17, leading=21,
+            textColor=INK)
+    lbl = S("lbl", fontName="Helvetica", fontSize=8.5, leading=11,
+            textColor=MUTED)
+    demo = Table(
+        [[Paragraph('"Status"', big), Paragraph('“Status”', big)],
+         [Paragraph("plain quotes. correct.", lbl),
+          Paragraph("curly quotes. breaks the file.", lbl)]],
+        colWidths=[2.4 * inch, 2.4 * inch])
+    demo.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), CODE_BG),
+        ("LEFTPADDING", (0, 0), (-1, -1), 16),
+        ("TOPPADDING", (0, 0), (-1, 0), 12),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 12),
+        ("TOPPADDING", (0, 1), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -2), 2),
+        ("LINEBEFORE", (0, 0), (0, -1), 2, ACCENT),
+        ("LINEBEFORE", (1, 0), (1, -1), 0.5, RULE),
+    ]))
+    yield demo
+    yield Spacer(1, 8)
+    yield para(
+        "The tool now spots this and says so in as many words, so it is no "
+        "longer a mystery if it happens — but not having it happen is better. "
+        "VS Code never substitutes quotes.", BODY)
+    yield para("To install it, if you do not have it", H3)
+    yield para(
+        "Download from <font face='Courier'>code.visualstudio.com</font>, open "
+        "the downloaded file, and drag <b>Visual Studio Code</b> into your "
+        "Applications folder. Then open it, press <b>Command + Shift + P</b>, "
+        "type <b>shell command</b>, and choose <b>Install \'code\' command in "
+        "PATH</b>. That last step is what lets you type "
+        "<font face='Courier'>code</font> to open a file.", BODY)
+    yield para("Opening this project in VS Code", H3)
+    yield code("cd ~/Documents/milli/agents/extendedreach-report-sync-poc",
+               "code .")
+    yield Spacer(1, 6)
+    yield para(
+        "The <font face='Courier'>.</font> means \"this folder\". VS Code "
+        "opens with the project files listed down the left. Press "
+        "<b>Control + `</b> (the backtick key, above Tab) to open a Terminal "
+        "at the bottom — already in the right folder. Every command in this "
+        "guide can be typed there.", BODY)
+    yield Spacer(1, 6)
+    yield para(
+        "If you would rather not install anything, the Terminal app alone "
+        "works for everything here. Where this guide says "
+        "<font face='Courier'>code somefile</font>, use "
+        "<font face='Courier'>open -e somefile</font> instead — and turn off "
+        "TextEdit\'s smart quotes first, under <b>Edit -> Substitutions</b>.", BODY)
+
     yield Spacer(1, 8)
     yield callout(
         "If a command seems to hang",
@@ -378,8 +443,12 @@ def story(toc_pages=None):
         "<font face='Courier'>.env</font>. Make your own copy of the example:", BODY)
     yield code("cp .env.example .env")
     yield Spacer(1, 8)
-    yield para("Then open it in TextEdit:", BODY)
-    yield code("open -e .env")
+    yield para("Then open it for editing:", BODY)
+    yield code("code .env")
+    yield Spacer(1, 6)
+    yield para(
+        "(Or <font face='Courier'>open -e .env</font> if you are using "
+        "TextEdit rather than VS Code.)", SMALL)
     yield Spacer(1, 10)
     yield para(
         "You will see a long file with explanatory notes. Lines starting with "
@@ -413,8 +482,7 @@ def story(toc_pages=None):
         "Not sure of your Mac username? Run this and use what it prints:", BODY)
     yield code("whoami")
     yield Spacer(1, 10)
-    yield para("Save the file in TextEdit (<b>Command</b> + <b>S</b>) and "
-               "close it.", BODY)
+    yield para("Save the file (<b>Command</b> + <b>S</b>) and close it.", BODY)
 
     yield Spacer(1, 0.12 * inch)
     yield callout(
@@ -594,7 +662,7 @@ def story(toc_pages=None):
     yield para(
         "Each report has its own columns, so each report gets its own list. "
         "Open the workflow file:", BODY)
-    yield code("open -e config/workflow.json")
+    yield code("code config/workflow.json")
     yield Spacer(1, 8)
     yield para(
         "Find your report by its short name, and fill in the "
@@ -899,6 +967,14 @@ def story(toc_pages=None):
     yield para("Re-run the installer:", BODY)
     yield code("./scripts/install_playwright.sh")
 
+    yield para("\"is not valid JSON\"", H3)
+    yield para(
+        "Something in <font face='Courier'>config/workflow.json</font> is "
+        "malformed. The message names the line and, where it can, the actual "
+        "cause — most often curly quotes substituted by a text editor, which "
+        "look identical to plain ones on screen. Fix what it names, or "
+        "re-open the file in VS Code, which does not substitute them.", BODY)
+
     yield para("\"csv_headers_missing\"", H3)
     yield para(
         "The file arrived but a column you listed in Step 6 was not in it. "
@@ -1056,8 +1132,10 @@ def story(toc_pages=None):
           "Install everything (Step 2)"],
          ["cp .env.example .env",
           "Create your settings file (Step 3)"],
-         ["open -e .env",
-          "Edit your settings"],
+         ["code .env",
+          "Edit your settings (open -e .env without VS Code)"],
+         ["code .",
+          "Open the whole project in VS Code"],
          ["./.venv/bin/python -m src.main --setup-assist",
           "Add ONE report. Run again for each (Step 5)"],
          ["./.venv/bin/python -m src.main --validate-config",

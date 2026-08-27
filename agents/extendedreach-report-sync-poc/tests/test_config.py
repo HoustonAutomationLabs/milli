@@ -446,3 +446,46 @@ def test_missing_csv_headers_warn_rather_than_block(tmp_path):
 def test_problem_formatting_marks_errors_and_warnings_distinctly():
     assert str(Problem("K", "d", "error")).startswith("ERROR")
     assert str(Problem("K", "d", "warning")).startswith("WARN")
+
+
+# -- unparseable workflow files --------------------------------------------
+
+def test_curly_quotes_are_named_as_the_cause(tmp_path, monkeypatch):
+    """A text editor substituting curly quotes is the likeliest way a
+    non-developer breaks this file, and the damage is invisible on screen:
+    a curly quote looks like a quote."""
+    path = tmp_path / "workflow.json"
+    path.write_text('{“reports”: {}}', encoding="utf-8")
+    monkeypatch.setenv("WORKFLOW_FILE", str(path))
+    with pytest.raises(ConfigError) as excinfo:
+        config_module.load()
+    message = str(excinfo.value)
+    assert "curly quote" in message
+    assert "smart quotes" in message
+
+
+def test_unbalanced_brackets_are_named(tmp_path, monkeypatch):
+    path = tmp_path / "workflow.json"
+    path.write_text('{"reports": {"a": {}}', encoding="utf-8")
+    monkeypatch.setenv("WORKFLOW_FILE", str(path))
+    with pytest.raises(ConfigError) as excinfo:
+        config_module.load()
+    assert "Brackets do not balance" in str(excinfo.value)
+
+
+def test_a_trailing_comma_is_named(tmp_path, monkeypatch):
+    path = tmp_path / "workflow.json"
+    path.write_text('{"reports": {"a": 1,}}', encoding="utf-8")
+    monkeypatch.setenv("WORKFLOW_FILE", str(path))
+    with pytest.raises(ConfigError) as excinfo:
+        config_module.load()
+    assert "comma after the last item" in str(excinfo.value)
+
+
+def test_the_error_always_gives_line_and_column(tmp_path, monkeypatch):
+    path = tmp_path / "workflow.json"
+    path.write_text('{\n  "reports": nonsense\n}', encoding="utf-8")
+    monkeypatch.setenv("WORKFLOW_FILE", str(path))
+    with pytest.raises(ConfigError) as excinfo:
+        config_module.load()
+    assert "line 2" in str(excinfo.value)

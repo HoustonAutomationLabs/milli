@@ -206,28 +206,71 @@ def story():
         "Tell me where the file was saved. Do not open it, paste its contents "
         "into the chat, or share it anywhere.")
 
-    yield Spacer(1, 10)
+    yield Spacer(1, 12)
+    yield para("What you will see when it finishes", H3)
+    yield para(
+        "Google shows a box containing <b>Your Client ID</b> and <b>Your "
+        "Client Secret</b>, plus a download button.", BODY)
     yield callout(
-        "Then move it yourself, in Terminal",
-        "The downloaded file is a credential. Put it where the tool expects "
-        "it, outside the project folder:")
-    yield Spacer(1, 6)
+        "You do not need to copy anything off that screen",
+        "The Client ID and Client Secret shown there are already inside the "
+        "file you are about to download. There is nothing to write down, "
+        "nothing to paste into this project, and nothing to send to me. Just "
+        "press <b>Download JSON</b> and close the box.<br/><br/>"
+        "If you closed it already: go to <b>Credentials</b>, find your client "
+        "in the list, and press the download icon at the right of its row. "
+        "You can download it as many times as you like.")
+
+    yield Spacer(1, 12)
+    yield para("Now move the file — three commands, in Terminal", H3)
+    yield para(
+        "Do this part yourself rather than asking Claude to. A file that lets "
+        "software act on your Google account is worth moving deliberately.", BODY)
+    yield para(
+        "The file landed in your Downloads folder with a long name like "
+        "<font face='Courier' size='8'>client_secret_1234567890-abcdefg."
+        "apps.googleusercontent.com.json</font>. These commands make the "
+        "folder the tool expects, then move the file into it and rename it to "
+        "<font face='Courier'>credentials.json</font> in one step. You do not "
+        "need to type that long name — the <font face='Courier'>*</font> "
+        "stands in for it.", BODY)
     yield code("mkdir -p ~/er-sync",
                "mv ~/Downloads/client_secret*.json ~/er-sync/credentials.json",
                "ls ~/er-sync")
-    yield Spacer(1, 6)
-    yield para(
-        "Do this part by hand rather than asking Claude to. A file that lets "
-        "software act on your Google account is worth moving deliberately.", SMALL)
+    yield Spacer(1, 8)
+    yield para("The last command should print exactly this:", SMALL)
+    yield code("credentials.json", output=True)
 
-    yield Spacer(1, 0.14 * inch)
+    yield Spacer(1, 14)
+    yield para("If the move command gives an error", H3)
+    yield table(
+        ["The message says", "What it means and what to do"],
+        [["No such file or directory",
+          "No matching file is in Downloads. Either the download did not "
+          "happen, or Chrome saved it elsewhere. Check your Downloads folder "
+          "in Finder. If the file is there under a different name, drag it "
+          "into a Finder window at "
+          "<font face='Courier'>~/er-sync</font> and rename it to "
+          "<font face='Courier'>credentials.json</font> by hand."],
+         ["Not a directory",
+          "You downloaded the file more than once, so the "
+          "<font face='Courier'>*</font> matched several files and they "
+          "cannot all become one file. Delete the extras from Downloads, "
+          "keeping the newest, then run the command again."],
+         ["Anything else",
+          "Send me the exact message."]],
+        [1.55 * inch, 4.7 * inch])
+
+    yield Spacer(1, 0.16 * inch)
     yield callout(
-        "Check it yourself",
-        "<font face='Courier'>ls ~/er-sync</font> should print "
-        "<font face='Courier'>credentials.json</font>. Back in the Console, "
-        "under Credentials, the new client should be listed with type "
-        "<b>Desktop</b>. If it says Web application, delete it and redo this "
-        "task — it will fail later with a confusing error otherwise.")
+        "Check it yourself — two things",
+        "<b>1.</b> <font face='Courier'>ls ~/er-sync</font> prints "
+        "<font face='Courier'>credentials.json</font> and nothing else.<br/>"
+        "<b>2.</b> Back in the Console, under <b>Credentials</b>, your new "
+        "client is listed with type <b>Desktop</b>. If it says <b>Web "
+        "application</b>, delete it and redo this task — it will work right up "
+        "to the final step and then fail with an error that does not explain "
+        "itself.")
 
     yield PageBreak()
 

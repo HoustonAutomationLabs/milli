@@ -252,7 +252,9 @@ def load(env_file: Optional[str] = None,
                 workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as exc:
                 raise ConfigError(
-                    f"{workflow_path.name} is not valid JSON (line {exc.lineno})"
+                    f"{workflow_path.name} is not valid JSON "
+                    f"(line {exc.lineno}, column {exc.colno})"
+                    + _json_hint(workflow_path)
                 ) from None
 
     slug = os.getenv("REPORT_SLUG", "").strip()
@@ -289,6 +291,43 @@ def load(env_file: Optional[str] = None,
         redact_terms=_split_csv(os.getenv("REDACT_TERMS")),
     )
     return cfg
+
+
+# Characters a word processor substitutes for the plain ones JSON requires.
+# TextEdit does this by default, and the resulting error ("not valid JSON")
+# names a line number but not the actual cause, which is invisible on screen:
+# a curly quote looks like a quote.
+_SMART_PUNCTUATION = {
+    "\u201c": 'left curly quote',
+    "\u201d": 'right curly quote',
+    "\u2018": 'left curly apostrophe',
+    "\u2019": 'right curly apostrophe',
+    "\u2013": 'en dash',
+    "\u2014": 'em dash',
+}
+
+
+def _json_hint(path: Path) -> str:
+    """Name the likely cause when a workflow file will not parse."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    found = sorted({name for ch, name in _SMART_PUNCTUATION.items() if ch in text})
+    if found:
+        return (
+            "\n  The file contains " + ", ".join(found) + ". A text editor "
+            "substituted these for the plain ones JSON needs; they look almost "
+            "identical on screen.\n  Replace every curly quote with a plain \" "
+            "and turn off smart quotes in your editor, or use VS Code, which "
+            "never substitutes them."
+        )
+    if text.count("{") != text.count("}") or text.count("[") != text.count("]"):
+        return "\n  Brackets do not balance: check for a missing } or ]."
+    if ",\n}" in text or ",\n  }" in text or ",]" in text or ",}" in text:
+        return "\n  There is a comma after the last item in a list or block."
+    return ""
 
 
 def _build_reports(workflow: dict[str, Any]) -> dict[str, ReportConfig]:
