@@ -135,6 +135,15 @@ anyone who cloned.
 
 ## Authorise Google Drive
 
+`docs/Claude-in-Chrome-Prompts.pdf` has copy-paste prompts for this section
+and for creating the Drive folders, if you would rather not click through the
+Console by hand. It covers only those two tasks: they involve no case data.
+**Never point a browser assistant at ExtendedReach itself** — an assistant that
+reads a page to decide what to click would be reading children's records, and
+the portal has approve, reject and delete controls on the same screens as
+export. The read-only guarantees in this tool are structural; an assistant has
+no equivalent.
+
 1. In the [Google Cloud Console](https://console.cloud.google.com/), create or
    pick a project.
 2. **APIs & Services → Library →** enable **Google Drive API**.
