@@ -5,6 +5,17 @@
 # A .command file is a script macOS will run when you double-click it, in a
 # Terminal window it opens for you. That is the only reason this exists: so
 # the first step needs no typing at all.
+#
+# IF DOUBLE-CLICKING IS BLOCKED: macOS refuses to launch files downloaded from
+# the internet unless they are signed by a registered developer, and on recent
+# versions the right-click-and-Open bypass is gone -- the dialog has only an OK
+# button. Run it from Terminal instead, which is not subject to that check:
+#
+#     type:  bash        (with a trailing space)
+#     then:  drag this file into the Terminal window
+#     then:  press Return
+#
+# See INSTALL.txt.
 
 # Run from this file's own folder, wherever the user put it.
 cd "$(dirname "$0")" || exit 1
@@ -90,8 +101,8 @@ echo "and it needs you. Here is where you stand:"
 echo
 ./.venv/bin/python -m src.main --doctor
 echo
-echo "${DIM}To come back here later, double-click this same file — it is safe to${OFF}"
-echo "${DIM}run again and will skip anything already done.${OFF}"
+echo "${DIM}To run this again later: in Terminal, type  bash  then drag this${OFF}"
+echo "${DIM}file in and press Return. It is safe to re-run and skips what is done.${OFF}"
 echo
 echo "Press Return to close this window."
 read -r _

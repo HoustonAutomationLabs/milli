@@ -38,6 +38,19 @@ generation, file validation, configuration validation and log redaction.
 
 ## Setup
 
+If you downloaded this as a zip, the quickest route is Terminal:
+
+```bash
+bash START-HERE.command      # or drag the file into Terminal after typing "bash "
+```
+
+Double-clicking `START-HERE.command` works too, but macOS blocks unsigned
+downloads and on recent versions the right-click-and-Open bypass is gone — the
+warning has only an OK button. Running it from Terminal is not subject to that
+check. See `INSTALL.txt`.
+
+From a git checkout, the equivalent is:
+
 ```bash
 cd agents/extendedreach-report-sync-poc
 ./scripts/install_playwright.sh

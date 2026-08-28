@@ -1,0 +1,46 @@
+HOW TO INSTALL
+==============
+
+If double-clicking START-HERE.command shows a security warning with only an
+"OK" button, do this instead. It takes 30 seconds and always works.
+
+  1. Press Command + Space, type   terminal   and press Return.
+
+  2. In the Terminal window type the word bash followed by a SPACE.
+     Do not press Return yet:
+
+         bash 
+
+  3. Drag the file START-HERE.command from Finder into the Terminal
+     window and let go. The rest of the line fills itself in.
+
+  4. Press Return.
+
+That's it. Installation takes about 10 minutes.
+
+
+WHY THE WARNING APPEARS
+-----------------------
+
+macOS blocks files downloaded from the internet unless they are signed by a
+registered Apple developer. This one is not signed, because it was written for
+you rather than published.
+
+On recent versions of macOS, right-clicking and choosing Open no longer gets
+past this. The dialog has only an OK button.
+
+Running the file from Terminal is not blocked, because you are handing it to a
+program macOS already trusts instead of asking macOS to launch it. The file is
+identical either way.
+
+
+THE OTHER WAY, IF YOU PREFER CLICKING
+-------------------------------------
+
+  1. Double-click START-HERE.command and press OK on the warning.
+  2. Open System Settings, then Privacy & Security.
+  3. Scroll to the bottom. There is a line saying START-HERE.command was
+     blocked. Click "Open Anyway" next to it.
+  4. Double-click the file again and choose Open.
+
+This only has to be done once.
