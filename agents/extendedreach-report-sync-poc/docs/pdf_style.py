@@ -124,23 +124,35 @@ def callout(title, body, kind="note"):
 
 
 def table(header, rows, widths):
-    data = [[Paragraph(h, CELLB) for h in header]]
+    """A simple data table.
+
+    Pass header=None (or a row of empty strings) for a table that is really a
+    two-column layout rather than data: an empty grey header bar reads as a
+    mistake.
+    """
+    has_header = bool(header) and any(h.strip() for h in header)
+    data = [[Paragraph(h, CELLB) for h in header]] if has_header else []
     for row in rows:
         data.append([Paragraph(c, CELLC if c.startswith(("./", "python", "cp ",
                                                          "git ", "open ", "grep",
                                                          "launchctl"))
                                else CELL) for c in row])
-    t = Table(data, colWidths=widths, repeatRows=1)
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efece6")),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.8, RULE),
-        ("LINEBELOW", (0, 1), (-1, -2), 0.4, colors.HexColor("#eae7e1")),
+    t = Table(data, colWidths=widths, repeatRows=1 if has_header else 0)
+    style = [
+        ("LINEBELOW", (0, 1 if has_header else 0), (-1, -2), 0.4,
+         colors.HexColor("#eae7e1")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 7),
         ("RIGHTPADDING", (0, 0), (-1, -1), 7),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    ]
+    if has_header:
+        style = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efece6")),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, RULE),
+        ] + style
+    t.setStyle(TableStyle(style))
     return t
 
 

@@ -530,6 +530,11 @@ def story(toc_pages=None):
 
     yield para("D. Put the file where the tool expects it", H3)
     yield para(
+        "You never open this file. You move it into a folder, and that is the "
+        "last time you think about it — the software reads it, you do not. If "
+        "the Terminal is unfamiliar, "
+        "<b>Terminal-Walkthrough.pdf</b> shows these commands as pictures.", BODY)
+    yield para(
         "A file lands in your Downloads folder with a long name starting "
         "<font face='Courier'>client_secret</font>. Move and rename it:", BODY)
     yield code("mkdir -p ~/er-sync",

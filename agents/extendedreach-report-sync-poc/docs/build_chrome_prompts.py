@@ -222,6 +222,13 @@ def story():
         "You can download it as many times as you like.")
 
     yield Spacer(1, 12)
+    yield callout(
+        "Never used the Terminal before?",
+        "<b>Terminal-Walkthrough.pdf</b> shows these three commands as "
+        "pictures of the window, with what comes back and what to do when it "
+        "complains. Use it instead of the summary below if the Terminal is "
+        "unfamiliar.")
+    yield Spacer(1, 10)
     yield para("Now move the file — three commands, in Terminal", H3)
     yield para(
         "Do this part yourself rather than asking Claude to. A file that lets "
