@@ -489,3 +489,40 @@ def test_the_error_always_gives_line_and_column(tmp_path, monkeypatch):
     with pytest.raises(ConfigError) as excinfo:
         config_module.load()
     assert "line 2" in str(excinfo.value)
+
+
+# -- the protected-paths guard must not depend on git -----------------------
+
+def test_the_project_folder_is_protected_without_a_git_directory(tmp_path, monkeypatch):
+    """The guard used to look only for a .git directory, so it silently did
+    nothing for anyone who downloaded the project as a zip — the people least
+    likely to notice a browser profile full of session cookies sitting next to
+    the code."""
+    monkeypatch.setattr(config_module, "_repo_root", lambda _start: None)
+    inside = config_module._project_root() / "downloads"
+    assert config_module._is_inside_repo(
+        inside, config_module._protected_roots()) is True
+
+
+def test_a_path_outside_the_project_is_allowed_without_git(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "_repo_root", lambda _start: None)
+    assert config_module._is_inside_repo(
+        tmp_path / "er-sync", config_module._protected_roots()) is False
+
+
+def test_every_sensitive_path_is_still_refused_without_git(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "_repo_root", lambda _start: None)
+    inside = config_module._project_root() / "should_not_exist"
+    for field, key in (("browser_profile_dir", "BROWSER_PROFILE_DIR"),
+                       ("download_dir", "DOWNLOAD_DIR"),
+                       ("log_dir", "LOG_DIR"),
+                       ("google_token_file", "GOOGLE_TOKEN_FILE")):
+        cfg = _config(tmp_path, **{field: inside})
+        assert key in _keys(_errors(cfg)), f"{key} was allowed inside the project"
+
+
+def test_the_git_root_is_still_protected_when_present(tmp_path):
+    """A project nested inside a larger repository stays protected up to the
+    repository boundary."""
+    roots = config_module._protected_roots()
+    assert config_module._project_root() in roots

@@ -45,22 +45,55 @@ class Problem:
         return f"{mark} {self.key}: {self.detail}"
 
 
+def _project_root() -> Path:
+    """The folder holding this project — the one containing src/."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _repo_root(start: Path) -> Optional[Path]:
-    """The git repository this file sits in, if any."""
+    """The git repository this file sits in, if there is one."""
     for candidate in [start, *start.parents]:
         if (candidate / ".git").exists():
             return candidate
     return None
 
 
-def _is_inside_repo(path: Path, repo: Optional[Path]) -> bool:
-    if repo is None:
+def _protected_roots() -> list[Path]:
+    """Directories a credential, browser profile or PHI download must never
+    land in.
+
+    The project directory is always protected, git or no git. An earlier
+    version looked only for a .git directory, which meant the whole guard
+    silently did nothing for anyone who downloaded the project as a zip —
+    exactly the people least likely to notice a browser profile full of
+    session cookies sitting next to the code. A safety check that quietly
+    stops working in the configuration most users actually run is worse than
+    no check at all, because it is still believed.
+
+    The git root is added when present, so a project nested inside a larger
+    repository is protected up to the repository boundary too.
+    """
+    roots = [_project_root()]
+    repo = _repo_root(Path(__file__).resolve())
+    if repo is not None:
+        roots.append(repo)
+    return roots
+
+
+def _is_inside_repo(path: Path, roots) -> bool:
+    """True if `path` is inside any protected directory."""
+    if roots is None:
         return False
-    try:
-        path.resolve().relative_to(repo.resolve())
-        return True
-    except ValueError:
-        return False
+    if isinstance(roots, Path):
+        roots = [roots]
+    resolved = path.resolve()
+    for root in roots:
+        try:
+            resolved.relative_to(Path(root).resolve())
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def _split_csv(value: Optional[str]) -> list[str]:
@@ -377,7 +410,7 @@ def _resolve_drive_folder(spec: dict[str, Any]) -> str:
 def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
     """Return every problem found. Errors block the run; warnings do not."""
     problems: list[Problem] = []
-    repo = _repo_root(Path(__file__).resolve())
+    protected = _protected_roots()
 
     def err(key: str, detail: str) -> None:
         problems.append(Problem(key, detail, "error"))
@@ -453,10 +486,10 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
     ):
         if path is None:
             continue
-        if _is_inside_repo(Path(path), repo):
-            err(key, "resolves inside the git repository; it must live outside "
-                     "so a credential, a browser profile or a PHI download can "
-                     "never be committed")
+        if _is_inside_repo(Path(path), protected):
+            err(key, "resolves inside the project folder; it must live outside "
+                     "so a credential, a browser profile or a downloaded report "
+                     "is never shared or committed along with the code")
         if "TODO" in str(path):
             err(key, "still contains a TODO placeholder")
 
