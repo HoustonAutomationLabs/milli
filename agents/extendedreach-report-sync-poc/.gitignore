@@ -33,6 +33,7 @@ reports/
 *.pdf
 # ...except the setup guide, which is documentation and contains no case data.
 !docs/*.pdf
+!docs/*.pptx
 
 # Operational logs and diagnostics
 logs/
