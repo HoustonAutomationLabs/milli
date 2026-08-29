@@ -222,8 +222,9 @@ echo "and it needs you. Here is where you stand:"
 echo
 ./.venv/bin/python -m src.main --doctor
 echo
-echo "${DIM}To run this again later: in Terminal, type  bash  then drag this${OFF}"
-echo "${DIM}file in and press Return. It is safe to re-run and skips what is done.${OFF}"
+echo "${DIM}To re-run this later, or to UPDATE to a newer version (drag${OFF}"
+echo "${DIM}UPDATE.command instead), type  bash  in Terminal, drag the file in,${OFF}"
+echo "${DIM}and press Return. Updating keeps your settings.${OFF}"
 echo
 echo "Press Return to close this window."
 read -r _

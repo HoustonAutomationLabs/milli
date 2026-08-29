@@ -59,6 +59,22 @@ cd agents/extendedreach-report-sync-poc
 That creates `.venv`, installs the dependencies, downloads Chromium and runs
 the test suite.
 
+### Updating
+
+```bash
+bash UPDATE.command
+```
+
+Downloads the current code from the public repository and unpacks it over the
+project, preserving `.env`, `config/workflow.json`, the browser profile, logs
+and downloaded reports. Settings are copied aside and put back rather than
+skipped by an exclude list, so a mistake in that list cannot destroy a
+configuration. The archive is verified before anything is overwritten.
+
+The script is wrapped in a function and invoked on its last line: it replaces
+its own file while running, and bash reads a script incrementally, so without
+that it resumes parsing the new file at the old byte offset and dies.
+
 ### Configure
 
 ```bash

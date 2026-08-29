@@ -37,6 +37,22 @@ Installing a newer Python does not remove the old one or change anything else
 on your Mac.
 
 
+UPDATING LATER
+--------------
+
+You should not need to download this again. To get the latest version:
+
+  1. Press Command + Space, type   terminal   and press Return.
+  2. Type the word  bash  followed by a SPACE.
+  3. Drag UPDATE.command from the project folder into the Terminal window.
+  4. Press Return.
+
+It downloads the current code and unpacks it over this folder, keeping your
+.env, your config/workflow.json, the browser profile, the logs and every
+report already downloaded. It refuses to touch anything if the download is
+incomplete.
+
+
 WHY THE WARNING APPEARS
 -----------------------
 
