@@ -19,6 +19,24 @@ If double-clicking START-HERE.command shows a security warning with only an
 That's it. Installation takes about 10 minutes.
 
 
+IF IT SAYS PYTHON IS NOT INSTALLED
+-----------------------------------
+
+The installer needs Python 3.11 or newer. macOS may include an older one, or
+none at all.
+
+  1. Go to  https://www.python.org/downloads/macos/
+  2. Download the latest "macOS 64-bit universal2 installer"
+  3. Open it and click through, accepting every default
+  4. CLOSE the Terminal window completely, then open a new one.
+     A window opened before the install cannot see it, and the error will
+     look exactly the same as before.
+  5. Run the installer again (bash + drag the file in + Return)
+
+Installing a newer Python does not remove the old one or change anything else
+on your Mac.
+
+
 WHY THE WARNING APPEARS
 -----------------------
 

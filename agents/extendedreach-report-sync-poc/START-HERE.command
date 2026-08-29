@@ -43,29 +43,62 @@ fail() {
 
 # ---------------------------------------------------------------- Python
 echo "${BOLD}[1/4]${OFF} Checking Python..."
+
+# Look on PATH first, then in the places the python.org installer and Homebrew
+# put things. A Terminal window opened BEFORE Python was installed still has the
+# old PATH, so searching those directories directly saves the user from an error
+# that looks identical to not having installed it at all.
 PY=""
-for candidate in python3.13 python3.12 python3.11 python3; do
-  if command -v "$candidate" >/dev/null 2>&1; then
-    if "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
-      PY="$candidate"; break
-    fi
+FOUND_BUT_OLD=""
+CANDIDATES="python3.14 python3.13 python3.12 python3.11 python3"
+for dir in /Library/Frameworks/Python.framework/Versions/*/bin \
+           /opt/homebrew/bin /usr/local/bin; do
+  for v in 3.14 3.13 3.12 3.11; do
+    [ -x "$dir/python$v" ] && CANDIDATES="$CANDIDATES $dir/python$v"
+  done
+  [ -x "$dir/python3" ] && CANDIDATES="$CANDIDATES $dir/python3"
+done
+
+for candidate in $CANDIDATES; do
+  path="$candidate"
+  case "$candidate" in
+    /*) [ -x "$path" ] || continue ;;
+    *)  command -v "$candidate" >/dev/null 2>&1 || continue
+        path="$(command -v "$candidate")" ;;
+  esac
+  if "$path" -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
+    PY="$path"; break
   fi
+  # Remember the newest too-old one, so the message can say what is there.
+  ver="$("$path" --version 2>&1)"
+  [ -z "$FOUND_BUT_OLD" ] && FOUND_BUT_OLD="$ver"
 done
 
 if [ -z "$PY" ]; then
   echo
-  echo "${RED}Python 3.11 or newer is not installed.${OFF}"
+  if [ -n "$FOUND_BUT_OLD" ]; then
+    echo "${RED}Found $FOUND_BUT_OLD, but this needs Python 3.11 or newer.${OFF}"
+    echo "${DIM}That older one came with macOS. Installing a newer Python does not${OFF}"
+    echo "${DIM}remove it or affect anything else on your Mac.${OFF}"
+  else
+    echo "${RED}No Python was found on this Mac.${OFF}"
+  fi
   echo
-  echo "Install it once, then double-click this file again:"
-  echo "  1. Go to  ${BOLD}python.org/downloads${OFF}"
-  echo "  2. Download the macOS installer and run it"
-  echo "  3. Accept the defaults"
+  echo "  ${BOLD}1.${OFF} Go to  ${BOLD}https://www.python.org/downloads/macos/${OFF}"
+  echo "  ${BOLD}2.${OFF} Download the latest ${BOLD}macOS 64-bit universal2 installer${OFF}"
+  echo "  ${BOLD}3.${OFF} Open it and click through, accepting every default"
+  echo
+  echo "  ${BOLD}4.${OFF} ${BOLD}Close this Terminal window completely${OFF} and open a new one."
+  echo "     ${DIM}This matters: a window opened before the install cannot see it.${OFF}"
+  echo
+  echo "  ${BOLD}5.${OFF} Run this installer again — type  ${BOLD}bash${OFF}  and a space,"
+  echo "     drag this file into the window, press Return."
   echo
   echo "Press Return to close this window."
   read -r _
   exit 1
 fi
-echo "      ${GREEN}found $($PY --version)${OFF}"
+echo "      ${GREEN}found $("$PY" --version) at $PY${OFF}"
 
 # ---------------------------------------------------------------- venv
 echo "${BOLD}[2/4]${OFF} Setting up a private workspace for this tool..."
