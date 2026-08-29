@@ -45,11 +45,20 @@ def test_todo_inside_a_comment_block_does_not_block_the_step(tmp_path):
 
 def test_a_real_unfilled_placeholder_does_block_the_step(tmp_path):
     unfilled = json.loads(json.dumps(FILLED))
-    unfilled["auth"]["authenticated_selector"] = "TODO_CSS_SELECTOR"
+    unfilled["reports"]["pastdue_case"]["export"] = {"selector": "TODO_SELECTOR"}
     _write(tmp_path, unfilled)
     step = doctor._check_workflow(tmp_path)
     assert step.state == TODO
     assert "placeholder" in step.why
+
+
+def test_a_blank_sign_in_selector_is_not_a_gap(tmp_path):
+    """Leaving it empty is the supported default: the session check is the
+    absence of a password field, which needs no configuration."""
+    blank = json.loads(json.dumps(FILLED))
+    blank["auth"]["authenticated_selector"] = ""
+    _write(tmp_path, blank)
+    assert doctor._check_workflow(tmp_path).state == DONE
 
 
 def test_a_missing_workflow_points_at_the_setup_assistant(tmp_path):

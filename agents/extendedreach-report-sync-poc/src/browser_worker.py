@@ -34,6 +34,7 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
+from . import recorder
 from .config import AppConfig, READ_ONLY_ACTIONS
 from .logging_utils import safe_url
 from .validators import build_filename, normalise_extension
@@ -217,10 +218,25 @@ class BrowserWorker:
         return None
 
     def is_authenticated(self) -> bool:
-        return self._selector_present(
-            self.cfg.auth.get("authenticated_selector"),
-            timeout_ms=5000,
-            frame_spec={"frame": self.cfg.auth.get("authenticated_frame")})
+        """Whether the session is signed in.
+
+        An explicit selector wins when one is configured. Otherwise: signed in
+        means no visible password field in any frame.
+
+        The negative test needs no configuration and works on any portal,
+        which matters because on this one the positive test could not be
+        captured at all — the sign-out control is inside a Domino frame and
+        carries no text to match.
+        """
+        selector = self.cfg.auth.get("authenticated_selector")
+        if selector and "TODO" not in selector:
+            return self._selector_present(
+                selector, timeout_ms=5000,
+                frame_spec={"frame": self.cfg.auth.get("authenticated_frame")})
+        try:
+            return not recorder.has_visible_password(self.page)
+        except PlaywrightError:
+            return False
 
     def ensure_authenticated(self) -> None:
         """Check the session; in headed mode, wait for a human to sign in.
@@ -254,15 +270,32 @@ class BrowserWorker:
         print("=" * 68 + "\n", flush=True)
 
         selector = self.cfg.auth.get("authenticated_selector")
-        try:
-            root = self._frame_for({"frame": self.cfg.auth.get("authenticated_frame")})
-            root.wait_for_selector(
-                selector, state="attached",
-                timeout=self.cfg.login_wait_seconds * 1000)
-        except (PlaywrightTimeout, PlaywrightError):
-            raise RequiresHumanLogin(
-                CATEGORY_NOT_AUTHENTICATED,
-                f"still not signed in after {self.cfg.login_wait_seconds}s") from None
+        deadline = time.monotonic() + self.cfg.login_wait_seconds
+        if selector and "TODO" not in selector:
+            try:
+                root = self._frame_for(
+                    {"frame": self.cfg.auth.get("authenticated_frame")})
+                root.wait_for_selector(
+                    selector, state="attached",
+                    timeout=self.cfg.login_wait_seconds * 1000)
+            except (PlaywrightTimeout, PlaywrightError):
+                raise RequiresHumanLogin(
+                    CATEGORY_NOT_AUTHENTICATED,
+                    f"still not signed in after {self.cfg.login_wait_seconds}s"
+                ) from None
+        else:
+            # No event to wait on for a negative condition, so poll for the
+            # password field to go away. Two seconds is slow enough to be
+            # cheap and fast enough that nobody notices the delay.
+            while time.monotonic() < deadline:
+                if not recorder.has_visible_password(self.page):
+                    break
+                time.sleep(2)
+            else:
+                raise RequiresHumanLogin(
+                    CATEGORY_NOT_AUTHENTICATED,
+                    f"still on a sign-in page after "
+                    f"{self.cfg.login_wait_seconds}s")
 
         self.log.info("Sign-in completed by the operator; session saved to the profile")
 

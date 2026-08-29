@@ -472,15 +472,17 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
             pass
         seen_folders.setdefault(folder, report.slug)
 
+    # An explicit signed-in selector is optional. Without one the session check
+    # is the absence of a visible password field, which needs no configuration
+    # and works on portals where no sign-out control can be captured — this one
+    # included. A placeholder left in place is still wrong, because it would be
+    # taken as a real selector and never match.
     auth = cfg.auth
-    if not auth.get("authenticated_selector"):
-        err("workflow.auth.authenticated_selector", "not set")
-    elif _PLACEHOLDER.search(str(auth.get("authenticated_selector"))):
-        err("workflow.auth.authenticated_selector", "still a TODO placeholder")
-    if not auth.get("login_form_selector"):
-        warn("workflow.auth.login_form_selector",
-             "not set; the tool can still detect a signed-in session but "
-             "cannot positively identify the login page")
+    selector = str(auth.get("authenticated_selector") or "")
+    if selector and _PLACEHOLDER.search(selector):
+        err("workflow.auth.authenticated_selector",
+            "still a TODO placeholder; leave it empty to use the "
+            "password-field check instead")
 
     # -- paths -------------------------------------------------------------
     for key, path in (

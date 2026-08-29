@@ -198,7 +198,10 @@ def _check_workflow(root: Path) -> Step:
             return [without_comments(v) for v in node]
         return node
 
-    blob = json.dumps(without_comments(data))
+    cleaned = without_comments(data)
+    # An empty authenticated_selector is the supported default, not a gap.
+    cleaned.get("auth", {}).pop("authenticated_selector", None)
+    blob = json.dumps(cleaned)
     if "TODO" in blob:
         return Step("workflow.json filled in", TODO,
                     why="it still contains TODO placeholders",

@@ -203,19 +203,104 @@ def _choose(candidates: list[dict[str, Any]], what: str, page=None):
         print("  Not one of the numbers listed.")
 
 
+def _capture_one_report(worker, page, document, slug, cfg, log) -> bool:
+    """Record one report: navigate, click export, keep what happened.
+
+    Returns True if the report was captured.
+    """
+    from . import recorder
+    from .validators import read_csv_header
+
+    print(f"\n  {'=' * 66}")
+    print(f"  Recording: {slug}")
+    print(f"  {'=' * 66}")
+    print("\n  1. In the browser, open the report you want to call "
+          f"'{slug}'.")
+    print("     Apply any filters it should always use.")
+    input("\n     Press Enter once the report is on screen. ")
+
+    report_url = page.url
+    print(f"\n     Captured address:\n       {report_url}")
+
+    print("\n  2. Now CLICK THE EXPORT BUTTON yourself, as you normally would.")
+    print("     This one you do click — I watch which button it was and catch")
+    print("     the file. A real report downloads; that is expected, and it is")
+    print("     how the column names get filled in.")
+
+    recorder.clear_clicks(page)
+    download = None
+    try:
+        with page.expect_download(timeout=cfg.download_timeout_ms) as info:
+            input("\n     Press Enter AFTER the download has started. ")
+        download = info.value
+    except Exception:
+        print("\n     No download arrived.")
+
+    click = recorder.last_click(page)
+
+    if click is None and download is None:
+        print("     No click was recorded either. Nothing to save for this one.")
+        print("     If the export opens a new window, try again and click the")
+        print("     control in the original window.")
+        return False
+
+    if click:
+        where = click["frame_label"] or "the main page"
+        print(f"\n     Recorded: {click['tag']} '{click['selector']}'  "
+              f"[in {where}]")
+    else:
+        print("\n     A file downloaded but no click was seen; saving the file"
+              " details only.")
+
+    headers: list[str] = []
+    extension = "csv"
+    if download is not None:
+        suggested = download.suggested_filename or ""
+        extension = (suggested.rsplit(".", 1)[-1] or "csv").lower()
+        saved = cfg.download_dir / f"setup_{slug}.{extension}"
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            download.save_as(str(saved))
+            print(f"     Downloaded: {saved.name}")
+            if extension == "csv":
+                headers = read_csv_header(saved, cfg.csv_encodings)
+                if headers:
+                    print(f"     Column names captured: {len(headers)}")
+        except Exception:
+            print("     The file could not be saved; column names not captured.")
+
+    export: dict[str, Any] = {}
+    if click:
+        export["selector"] = click["selector"]
+        if click["frame"]:
+            export["frame"] = click["frame"]
+    else:
+        export["selector"] = "TODO_CSS_SELECTOR_FOR_EXPORT_CONTROL"
+
+    document["reports"][slug] = {
+        "enabled": True,
+        "description": f"TODO(operator): what {slug} is, in plain words.",
+        "navigation": {"mode": "direct_url", "direct_url": report_url},
+        "filters": [],
+        "export": export,
+        "validation": {
+            "expected_extension": extension,
+            "expected_csv_headers": headers,
+        },
+    }
+    return True
+
+
 def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
                      live_path: Optional[Path] = None) -> int:
-    """Walk the operator through capturing what workflow.json needs.
+    """Record each report by watching the operator use the portal.
 
-    Adds ONE report per run and keeps everything already captured. With nine
-    reports to configure, a version that rewrote the file each time would throw
-    away the previous eight, and would do it silently.
+    Adds reports to whatever is already configured and never rewrites the file
+    from scratch, so a second run cannot discard the first.
     """
+    from . import recorder
     from src.browser_worker import BrowserWorker
 
-    slug = (slug or cfg.report_slug or "").strip()
-
-    # Start from what is already configured, so earlier reports survive.
     base_path = None
     for candidate in (live_path, out_path):
         if candidate and candidate.exists():
@@ -224,132 +309,95 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
     if base_path is None:
         base_path = out_path.parent / "workflow.example.json"
 
-    document = json.loads(base_path.read_text(encoding="utf-8"))
-    document = _strip_comments(document)
+    document = _strip_comments(json.loads(base_path.read_text(encoding="utf-8")))
     document.setdefault("reports", {})
     existing = [k for k in document["reports"] if not _PLACEHOLDER_SLUG(k)]
 
     print("\n" + "=" * 70)
-    print("  Setup assistant")
+    print("  Setup — recording mode")
     print()
-    print("  This opens a browser and watches. It clicks nothing, downloads")
-    print("  nothing, and changes nothing in the portal. You drive.")
+    print("  You drive the browser. I watch which buttons you press and catch")
+    print("  the files. Nothing is clicked for you, and nothing in the portal")
+    print("  is changed.")
     if existing:
         print()
         print(f"  Already configured: {', '.join(existing)}")
-        print("  This run adds one more; the others are kept.")
     print("=" * 70)
 
-    if not slug:
-        slug = input("\n  Short name for the report you are adding "
-                     "(e.g. pastdue_case): ").strip()
-    if not slug:
-        print("\n  No name given. Nothing was written.\n")
-        return 1
-    if slug in document["reports"]:
-        answer = input(f"\n  {slug!r} is already configured. Replace it? "
-                       "(y/N) ").strip().lower()
-        if answer != "y":
-            print("\n  Left as it was. Nothing was written.\n")
-            return 0
-
+    captured: list[str] = []
     with BrowserWorker(cfg, log, headed=True) as worker:
         page = worker.page
+        recorder.install(page)          # must be armed before navigating
         worker.goto(cfg.base_url)
 
-        # -- step 1: sign in --------------------------------------------
-        print("\n  STEP 1 of 3 - Sign in")
-        if _is_configured(document.get("auth", {}).get("authenticated_selector")):
-            print("  Sign-in was captured on an earlier run. Just sign in if")
-            print("  the browser asks; nothing to choose here.")
-            input("\n  Press Enter once you can see the home page. ")
-            auth_selector = document["auth"]["authenticated_selector"]
-            auth_frame = document["auth"].get("authenticated_frame")
-        else:
-            print("  Sign in in the browser window, including MFA if asked.")
-            print("  Nothing here types anything for you.")
-            input("\n  Press Enter once you can see the ExtendedReach home page. ")
-            signed_in = _scan(page, SIGNED_IN_TEXT)
-            auth_selector, auth_frame = _choose(
-                signed_in, "element that only appears when you are signed in "
-                           "(a Sign Out link is the usual one)", page)
+        print("\n  STEP 1 — Sign in")
+        print("  Sign in in the browser window, including MFA if asked.")
+        print("  Nothing here types anything for you.")
+        input("\n  Press Enter once you are signed in. ")
 
-        # -- step 2: the report -----------------------------------------
-        print(f"\n  STEP 2 of 3 - Open the report you want to call '{slug}'")
-        print("  Navigate to it and apply any filters it should always use.")
-        input("\n  Press Enter once the report is on screen. ")
+        if recorder.has_visible_password(page):
+            print("\n  A password field is still showing. If you are signed in,")
+            print("  carry on anyway; otherwise finish signing in first.")
+            input("  Press Enter to continue. ")
 
-        report_url = page.url
-        print(f"\n  Captured report URL:\n    {report_url}")
+        # No sign-in selector is captured on purpose: the check is the absence
+        # of a password field, which needs no configuration and works here.
+        document.setdefault("auth", {})
+        document["auth"].setdefault("authenticated_selector", "")
+        document["auth"].setdefault("login_form_selector", "input[type=password]")
+        document["auth"].setdefault("mfa_selectors", [])
+        document["auth"].setdefault("captcha_selectors", [
+            "iframe[title*='recaptcha' i]", "iframe[src*='hcaptcha' i]"])
+        document.setdefault("safety", {
+            "url_denylist_substrings": [
+                "delete", "remove", "destroy", "edit", "update", "save",
+                "submit", "approve", "reject", "create", "new", "insert",
+                "merge", "archive"],
+            "screenshot_safe_url_substrings": [
+                "/login", "/signin", "/error", "/denied"],
+        })
 
-        # -- step 3: the export control ---------------------------------
-        print("\n  STEP 3 of 3 - Identify the export control")
-        print("  Do NOT click it. Just identify it below.")
-        export_candidates = _scan(page, EXPORT_TEXT)
-        export_selector, export_frame = _choose(
-            export_candidates, "export/Excel control", page)
+        # Drop the example's placeholder report once a real one is added.
+        for key in [k for k in document["reports"] if _PLACEHOLDER_SLUG(k)]:
+            document["reports"].pop(key)
 
-        mfa_candidates = _scan(page, MFA_HINT, roles=("input",))
+        print("\n  STEP 2 — Record your reports")
+        print("  One sign-in covers all of them; stay in this window.")
 
-    # -- merge into the document ------------------------------------------
-    document.setdefault("auth", {})
-    if auth_selector:
-        document["auth"]["authenticated_selector"] = auth_selector
-        if auth_frame:
-            document["auth"]["authenticated_frame"] = auth_frame
-    document["auth"].setdefault("login_form_selector", "")
-    if mfa_candidates and not _is_configured(
-            (document["auth"].get("mfa_selectors") or [None])[0]):
-        document["auth"]["mfa_selectors"] = [c["selector"] for c in mfa_candidates[:3]]
-    document["auth"].setdefault("captcha_selectors", [
-        "iframe[title*='recaptcha' i]", "iframe[src*='hcaptcha' i]"])
-    document.setdefault("safety", {
-        "url_denylist_substrings": [
-            "delete", "remove", "destroy", "edit", "update", "save", "submit",
-            "approve", "reject", "create", "new", "insert", "merge", "archive"],
-        "screenshot_safe_url_substrings": ["/login", "/signin", "/error", "/denied"],
-    })
-
-    # Drop the example's placeholder report the first time a real one is added.
-    for key in [k for k in document["reports"] if _PLACEHOLDER_SLUG(k)]:
-        document["reports"].pop(key)
-
-    document["reports"][slug] = {
-        "enabled": True,
-        "description": f"TODO(operator): what {slug} is, in plain words.",
-        "navigation": {"mode": "direct_url", "direct_url": report_url},
-        "filters": [],
-        "export": ({"selector": export_selector, **({"frame": export_frame}
-                                                    if export_frame else {})}
-                   if export_selector
-                   else {"selector": "TODO_CSS_SELECTOR_FOR_EXPORT_CONTROL"}),
-        "validation": {
-            "expected_csv_headers": [],
-        },
-    }
+        next_slug = (slug or cfg.report_slug or "").strip()
+        while True:
+            if not next_slug:
+                next_slug = input(
+                    "\n  Short name for the next report "
+                    "(e.g. open_beds), or Enter to finish: ").strip()
+            if not next_slug:
+                break
+            if next_slug in document["reports"]:
+                answer = input(f"  {next_slug!r} is already configured. "
+                               "Replace it? (y/N) ").strip().lower()
+                if answer != "y":
+                    next_slug = ""
+                    continue
+            if _capture_one_report(worker, page, document, next_slug, cfg, log):
+                captured.append(next_slug)
+            next_slug = ""
 
     out_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
     print("\n" + "=" * 70)
     print(f"  Draft written to {out_path}")
-    print(f"  Reports now configured: {', '.join(document['reports'])}")
+    if captured:
+        print(f"  Recorded this run: {', '.join(captured)}")
+    print(f"  Reports now configured: {', '.join(document['reports']) or 'none'}")
     print()
-    remaining = []
-    if not auth_selector:
-        remaining.append("auth.authenticated_selector")
-    if not export_selector:
-        remaining.append(f"the export control for {slug}")
-    remaining.append(f"reports.{slug}.validation.expected_csv_headers "
-                     "(the column names, after you download it once)")
-    print("  Still to fill in:")
-    for item in remaining:
-        print(f"    - {item}")
-    print()
-    print("  Review the file, then:")
-    print(f"    cp {out_path.name} workflow.json      (inside config/)")
+    unfinished = [k for k, v in document["reports"].items()
+                  if "TODO" in json.dumps(v)]
+    if unfinished:
+        print(f"  Still needing attention: {', '.join(unfinished)}")
+        print()
+    print("  Next:")
+    print(f"    cp {out_path} {out_path.parent / 'workflow.json'}")
     print("    ./.venv/bin/python -m src.main --list-reports")
-    print()
-    print("  Run this again for the next report.")
     print("=" * 70 + "\n")
     return 0
 
