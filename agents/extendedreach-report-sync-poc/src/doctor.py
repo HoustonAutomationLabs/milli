@@ -35,6 +35,21 @@ def _venv_python() -> str:
     return "./.venv/bin/python"
 
 
+def _editor_command(path: Path) -> str:
+    """How to open a file for editing, from any directory.
+
+    Absolute paths on purpose: the installer's Terminal window ends in the home
+    directory, so a relative path there reports the file missing and reads as
+    though the install failed.
+    """
+    import shutil
+
+    if shutil.which("code"):
+        return f'code "{path}"'
+    return f'open -e "{path}"'
+
+
+
 def _check_dependencies() -> Step:
     missing = []
     for module, label in (("playwright", "playwright"),
@@ -135,14 +150,14 @@ def _check_env(root: Path) -> Step:
     if not path.exists():
         return Step(".env created", TODO,
                     why="the file does not exist yet",
-                    command="cp .env.example .env    # then open it and fill in the TODOs")
+                    command=f'cp "{root}/.env.example" "{path}"')
     text = path.read_text(encoding="utf-8", errors="replace")
     todos = sum(1 for line in text.splitlines()
                 if "TODO" in line and not line.strip().startswith("#"))
     if todos:
         return Step(".env filled in", TODO,
                     why=f"{todos} setting(s) still contain a TODO placeholder",
-                    command="open .env    # replace every TODO")
+                    command=_editor_command(path))
     return Step(".env filled in", DONE)
 
 
@@ -153,7 +168,7 @@ def _check_workflow(root: Path) -> Step:
         if draft.exists():
             return Step("workflow.json in place", TODO,
                         why="a draft exists but has not been promoted",
-                        command="cp config/workflow.draft.json config/workflow.json")
+                        command=f'cp "{draft}" "{path}"')
         return Step("workflow.json in place", TODO,
                     why="the report URL and selectors have not been captured",
                     command=f"{_venv_python()} -m src.main --setup-assist")
@@ -178,7 +193,7 @@ def _check_workflow(root: Path) -> Step:
     if "TODO" in blob:
         return Step("workflow.json filled in", TODO,
                     why="it still contains TODO placeholders",
-                    command="open config/workflow.json")
+                    command=_editor_command(path))
     return Step("workflow.json filled in", DONE)
 
 
@@ -355,6 +370,11 @@ def run_doctor(env_file: Optional[str] = None) -> int:
     nxt = remaining[0]
     print("  NEXT — run this one command:\n")
     print(f"      {nxt.command}\n")
+    if nxt.command.startswith("./"):
+        # Relative commands only work inside the project. Say where that is,
+        # because the window this was printed in is usually somewhere else.
+        print(f"  (from {root} — if you are elsewhere, run first:)")
+        print(f"      cd \"{root}\"\n")
     if len(remaining) > 1:
         print(f"  ({len(remaining) - 1} step(s) after that. Run --doctor again "
               f"any time to see where you are.)\n")

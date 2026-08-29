@@ -64,7 +64,9 @@ def test_an_unpromoted_draft_is_recognised(tmp_path):
     (tmp_path / "config" / "workflow.draft.json").write_text("{}", encoding="utf-8")
     step = doctor._check_workflow(tmp_path)
     assert step.state == TODO
-    assert "cp config/workflow.draft.json" in step.command
+    assert step.command.startswith("cp ")
+    assert "workflow.draft.json" in step.command
+    assert str(tmp_path) in step.command
 
 
 def test_invalid_json_is_reported_rather_than_crashing(tmp_path):
@@ -76,9 +78,13 @@ def test_invalid_json_is_reported_rather_than_crashing(tmp_path):
 # -- .env -------------------------------------------------------------------
 
 def test_a_missing_env_file_is_the_first_thing_to_fix(tmp_path):
+    """Absolute paths: the installer's window ends in the home directory, so a
+    relative path there reports the file missing and reads like a failure."""
     step = doctor._check_env(tmp_path)
     assert step.state == TODO
-    assert "cp .env.example .env" in step.command
+    assert step.command.startswith("cp ")
+    assert str(tmp_path) in step.command
+    assert ".env.example" in step.command
 
 
 def test_commented_out_todos_in_env_do_not_count(tmp_path):
@@ -236,3 +242,12 @@ def test_downloading_is_only_suggested_when_nothing_is_installed(monkeypatch, tm
     step = doctor._check_browser("")
     assert step.state == TODO
     assert "playwright install chromium" in step.command
+
+
+def test_editing_commands_carry_an_absolute_path(tmp_path):
+    """A bare "open .env" runs against whatever directory the shell is in,
+    which after the installer is the home folder, not the project."""
+    (tmp_path / ".env").write_text("GOOGLE_DRIVE_FOLDER_ID=TODO_X\n", encoding="utf-8")
+    step = doctor._check_env(tmp_path)
+    assert step.state == TODO
+    assert str(tmp_path / ".env") in step.command
