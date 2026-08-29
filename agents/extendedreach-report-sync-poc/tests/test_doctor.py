@@ -192,3 +192,47 @@ def test_only_a_handful_of_missing_reports_are_listed():
     assert step.state == TODO
     step = doctor._check_real_run([_run("report_0")], NINE)
     assert step.why.endswith("...")
+
+
+# -- which browser to drive -------------------------------------------------
+
+def test_a_configured_installed_browser_satisfies_the_step(monkeypatch):
+    """On a macOS Playwright no longer builds Chromium for, an installed
+    Chrome is the answer — and the step must recognise it."""
+    monkeypatch.setattr(doctor.Path, "exists", lambda self: True)
+    step = doctor._check_browser("chrome")
+    assert step.state == DONE
+    assert "Google Chrome" in step.name
+
+
+def test_a_configured_browser_that_is_not_installed_is_reported(monkeypatch):
+    monkeypatch.setattr(doctor.Path, "exists", lambda self: False)
+    step = doctor._check_browser("chrome")
+    assert step.state == TODO
+    assert "not in your Applications folder" in step.why
+
+
+def test_an_unknown_configured_browser_is_reported(monkeypatch):
+    step = doctor._check_browser("safari")
+    assert step.state == TODO
+    assert "not a browser this tool knows how to find" in step.why
+
+
+def test_an_installed_browser_is_suggested_before_a_download(monkeypatch, tmp_path):
+    """The bug this replaces: with no Chromium on disk it told the operator to
+    run `playwright install chromium` — the exact command that fails on their
+    macOS. Never suggest a command that cannot succeed."""
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(doctor.Path, "exists", lambda self: True)
+    step = doctor._check_browser("")
+    assert step.state == TODO
+    assert "BROWSER_CHANNEL=chrome" in step.command
+    assert "playwright install" not in step.command
+
+
+def test_downloading_is_only_suggested_when_nothing_is_installed(monkeypatch, tmp_path):
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(doctor.Path, "exists", lambda self: False)
+    step = doctor._check_browser("")
+    assert step.state == TODO
+    assert "playwright install chromium" in step.command

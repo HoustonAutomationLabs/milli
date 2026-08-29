@@ -151,6 +151,16 @@ fi
 echo "      ${GREEN}done${OFF}"
 
 # ---------------------------------------------------------------- browser
+# Create the settings file now, before the browser step, so that step has
+# somewhere to record which browser this Mac must use. Previously it only
+# wrote that setting when .env already existed, which on a first install it
+# never does — so the one machine that needed the setting was the one that
+# did not get it.
+if [ ! -f .env ] && [ -f .env.example ]; then
+  cp .env.example .env
+  echo "      ${DIM}created .env from the example (you fill it in later)${OFF}"
+fi
+
 echo "${BOLD}[3/4]${OFF} Setting up the browser it drives..."
 : > "$LOG"
 if ./.venv/bin/python -m playwright install chromium >>"$LOG" 2>&1; then
@@ -165,7 +175,7 @@ else
       echo "      ${DIM}this macOS is too old for Playwright's own browser${OFF}"
       echo "      ${DIM}using the Google Chrome already installed instead${OFF}"
       if [ -f .env ]; then
-        grep -q '^BROWSER_CHANNEL=' .env || printf '\nBROWSER_CHANNEL=chrome\n' >> .env
+        grep -q '^BROWSER_CHANNEL=' .env || printf '\n# This Mac cannot run the browser Playwright downloads, so the tool drives\n# the installed Google Chrome instead. Added automatically by the installer.\nBROWSER_CHANNEL=chrome\n' >> .env
       fi
       NEEDS_CHROME_CHANNEL="yes"
       echo "      ${GREEN}done${OFF}"
@@ -201,12 +211,10 @@ echo
 echo "${GREEN}${BOLD}Installed successfully.${OFF}"
 if [ "${NEEDS_CHROME_CHANNEL:-}" = "yes" ]; then
   echo
-  echo "${BOLD}One thing to remember for later:${OFF} this Mac uses your installed"
-  echo "Google Chrome rather than a downloaded one. When you create your .env"
-  echo "file, it needs this line — the installer adds it automatically if the"
-  echo "file already exists:"
-  echo
-  echo "    ${BOLD}BROWSER_CHANNEL=chrome${OFF}"
+  echo "${BOLD}Note:${OFF} this Mac drives your installed Google Chrome rather than a"
+  echo "downloaded browser, because macOS here is older than Playwright builds"
+  echo "one for. The setting ${BOLD}BROWSER_CHANNEL=chrome${OFF} was added to your .env"
+  echo "already — leave it there. Everything else works the same."
 fi
 echo
 echo "Nothing is connected to ExtendedReach or Google yet — that is the next part,"

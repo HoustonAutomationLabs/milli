@@ -53,21 +53,49 @@ def _check_dependencies() -> Step:
     return Step("Python dependencies installed", DONE)
 
 
-def _check_browser() -> Step:
-    """Look for a downloaded Chromium on disk.
+# Browsers already on the machine that Playwright can drive directly.
+INSTALLED_BROWSERS = {
+    "chrome": Path("/Applications/Google Chrome.app"),
+    "chrome-beta": Path("/Applications/Google Chrome Beta.app"),
+    "msedge": Path("/Applications/Microsoft Edge.app"),
+}
+
+
+def _check_browser(channel: str = "") -> Step:
+    """Confirm there is a browser to drive.
+
+    Which browser depends on configuration. Playwright no longer builds its own
+    Chromium for older macOS releases, so on those the answer is an installed
+    Google Chrome and "download Chromium" is advice that cannot succeed —
+    telling someone to run a command that will fail is worse than saying
+    nothing.
 
     Deliberately a filesystem check rather than starting Playwright: starting
     the driver just to ask a question leaves an async teardown traceback on
     stderr, and a confusing traceback in a "what do I do next" tool is worse
-    than a slightly less authoritative answer. A genuine version mismatch is
-    reported clearly at run time anyway.
+    than a slightly less authoritative answer.
     """
     try:
         import playwright  # noqa: F401
     except ImportError:
-        return Step("Chromium downloaded", TODO,
+        return Step("Browser ready", TODO,
                     why="playwright is not installed yet",
-                    command="./scripts/install_playwright.sh")
+                    command="bash START-HERE.command")
+
+    # Configured to drive an installed browser: check for that one instead.
+    if channel:
+        app = INSTALLED_BROWSERS.get(channel)
+        if app is None:
+            return Step("Browser ready", TODO,
+                        why=f"BROWSER_CHANNEL is set to {channel!r}, which is "
+                            "not a browser this tool knows how to find",
+                        command="open .env")
+        if app.exists():
+            return Step(f"Browser ready ({app.stem})", DONE)
+        return Step("Browser ready", TODO,
+                    why=f"BROWSER_CHANNEL is set to {channel!r} but "
+                        f"{app.name} is not in your Applications folder",
+                    command="install it from google.com/chrome")
 
     override = os.getenv("PLAYWRIGHT_BROWSERS_PATH")
     candidates = []
@@ -81,13 +109,25 @@ def _check_browser() -> Step:
     for directory in candidates:
         try:
             if directory.is_dir() and any(directory.glob("chromium-*")):
-                return Step("Chromium downloaded", DONE)
+                return Step("Browser ready (Chromium)", DONE)
         except OSError:
             continue
 
-    return Step("Chromium downloaded", TODO,
-                why="no downloaded Chromium found",
-                command="./.venv/bin/playwright install chromium")
+    # No downloaded Chromium. Before sending anyone off to download one, check
+    # whether this machine already has a browser that would work — on a macOS
+    # Playwright has dropped, the download is not merely slow, it is refused.
+    for name, app in INSTALLED_BROWSERS.items():
+        if app.exists():
+            return Step("Browser ready", TODO,
+                        why=f"no downloaded Chromium, but {app.stem} is "
+                            "installed and can be used instead",
+                        command=f"add this line to .env:  BROWSER_CHANNEL={name}",
+                        detail="required on macOS versions Playwright no longer "
+                               "builds its own browser for; harmless otherwise")
+
+    return Step("Browser ready", TODO,
+                why="no browser found to drive",
+                command="./.venv/bin/python -m playwright install chromium")
 
 
 def _check_env(root: Path) -> Step:
@@ -281,7 +321,7 @@ def run_doctor(env_file: Optional[str] = None) -> int:
 
     steps = [
         _check_dependencies(),
-        _check_browser(),
+        _check_browser(cfg.browser_channel if cfg else ""),
         _check_env(root),
         _check_workflow(root),
         _check_config(cfg, load_error),
