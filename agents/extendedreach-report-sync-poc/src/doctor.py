@@ -152,11 +152,20 @@ def _check_env(root: Path) -> Step:
                     why="the file does not exist yet",
                     command=f'cp "{root}/.env.example" "{path}"')
     text = path.read_text(encoding="utf-8", errors="replace")
-    todos = sum(1 for line in text.splitlines()
-                if "TODO" in line and not line.strip().startswith("#"))
-    if todos:
+    live = [line for line in text.splitlines()
+            if "TODO" in line and not line.strip().startswith("#")]
+    google_only = live and all("GOOGLE" in line.upper() for line in live)
+
+    if live and google_only:
+        # Google is not needed to prove the export works, and saying so here
+        # saves an evening of Cloud Console clicking before the part that
+        # actually needs discovering.
+        return Step(".env filled in (except Google)", DONE,
+                    detail=f"{len(live)} Google setting(s) still to do — they "
+                           f"are only needed for the upload, which comes later")
+    if live:
         return Step(".env filled in", TODO,
-                    why=f"{todos} setting(s) still contain a TODO placeholder",
+                    why=f"{len(live)} setting(s) still contain a TODO placeholder",
                     command=_editor_command(path))
     return Step(".env filled in", DONE)
 
@@ -202,7 +211,11 @@ def _check_config(cfg, load_error: Optional[str]) -> Step:
         return Step("Configuration valid", TODO, why=load_error,
                     command=f"{_venv_python()} -m src.main --validate-config")
     from src import config as config_module
-    problems = config_module.validate(cfg, require_drive=True)
+    # require_drive=False: Drive settings are checked by their own step, which
+    # now comes after the dry run. A missing folder id should not report the
+    # whole configuration invalid while the operator is still working on the
+    # portal half.
+    problems = config_module.validate(cfg, require_drive=False)
     errors = [p for p in problems if p.severity == "error"]
     if errors:
         return Step("Configuration valid", TODO,
@@ -340,8 +353,8 @@ def run_doctor(env_file: Optional[str] = None) -> int:
         _check_env(root),
         _check_workflow(root),
         _check_config(cfg, load_error),
-        _check_google(cfg),
         _check_dry_run(runs, expected),
+        _check_google(cfg),
         _check_real_run(runs, expected),
         _check_schedule(),
     ]

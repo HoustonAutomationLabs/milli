@@ -100,7 +100,7 @@ def test_commented_out_todos_in_env_do_not_count(tmp_path):
 
 def test_a_live_todo_in_env_is_counted(tmp_path):
     (tmp_path / ".env").write_text(
-        "GOOGLE_DRIVE_FOLDER_ID=TODO_DRIVE_FOLDER_ID\n", encoding="utf-8")
+        "EXTENDEDREACH_BASE_URL=https://TODO.example.com\n", encoding="utf-8")
     step = doctor._check_env(tmp_path)
     assert step.state == TODO
     assert "1 setting" in step.why
@@ -247,7 +247,40 @@ def test_downloading_is_only_suggested_when_nothing_is_installed(monkeypatch, tm
 def test_editing_commands_carry_an_absolute_path(tmp_path):
     """A bare "open .env" runs against whatever directory the shell is in,
     which after the installer is the home folder, not the project."""
-    (tmp_path / ".env").write_text("GOOGLE_DRIVE_FOLDER_ID=TODO_X\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("REPORT_SLUG=TODO_X\n", encoding="utf-8")
     step = doctor._check_env(tmp_path)
     assert step.state == TODO
     assert str(tmp_path / ".env") in step.command
+
+
+def test_outstanding_google_settings_do_not_block_the_portal_work(tmp_path):
+    """Google is only needed for the upload. Reporting .env unfinished while
+    the only gaps are Drive settings sends someone into the Cloud Console
+    before the part that actually needs discovering — the portal."""
+    (tmp_path / ".env").write_text(
+        "EXTENDEDREACH_BASE_URL=https://real.example.com\n"
+        "GOOGLE_DRIVE_FOLDER_ID=TODO_DRIVE_FOLDER_ID\n"
+        "GOOGLE_TOKEN_FILE=/Users/TODO_YOU/er-sync/token.json\n",
+        encoding="utf-8")
+    step = doctor._check_env(tmp_path)
+    assert step.state == DONE
+    assert "2 Google setting" in step.detail
+
+
+def test_a_non_google_todo_still_blocks(tmp_path):
+    (tmp_path / ".env").write_text(
+        "EXTENDEDREACH_BASE_URL=https://TODO.example.com\n"
+        "GOOGLE_DRIVE_FOLDER_ID=TODO_DRIVE_FOLDER_ID\n",
+        encoding="utf-8")
+    assert doctor._check_env(tmp_path).state == TODO
+
+
+def test_the_dry_run_comes_before_the_google_step(capsys):
+    """Ordering is the point of this change: prove the export works, then wire
+    up the destination. Google first sends someone into the Cloud Console
+    before touching the part that actually needs discovering."""
+    doctor.run_doctor()
+    lines = capsys.readouterr().out.splitlines()
+    dry = next(i for i, l in enumerate(lines) if "Test run passed" in l)
+    google = next(i for i, l in enumerate(lines) if "Google OAuth" in l)
+    assert dry < google
