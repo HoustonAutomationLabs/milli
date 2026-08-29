@@ -11,6 +11,15 @@ playwright>=1.48,<2
 
 google-api-python-client>=2.140,<3
 google-auth>=2.35,<3
+
+# Pinned below 47 on purpose. cryptography 47 dropped its macOS universal2
+# wheels and ships Apple Silicon only, so on an Intel Mac pip finds no usable
+# build, falls back to the source tarball, and tries to compile it — which
+# needs Rust and OpenSSL and fails with several hundred lines about
+# openssl-sys. 46.x still publishes macosx_10_9_universal2, which runs on both
+# Intel and Apple Silicon. google-auth only needs >=38, so nothing is lost.
+# Revisit when Intel Macs stop mattering here.
+cryptography>=42,<47
 google-auth-oauthlib>=1.2,<2
 google-auth-httplib2>=0.2,<1
 

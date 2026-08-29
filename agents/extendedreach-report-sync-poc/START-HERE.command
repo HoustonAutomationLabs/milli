@@ -142,7 +142,11 @@ fi
 # Truncate before the step that matters, so the error shown on failure is that
 # step's own output and not the tail of a successful one.
 : > "$LOG"
-./.venv/bin/python -m pip install -r requirements.txt >>"$LOG" 2>&1 \
+# --only-binary=:all: refuses to compile anything from source. A source build
+# on a Mac without developer tools produces hundreds of lines of compiler error
+# that no operator can act on; failing immediately with "no ready-made version
+# for this Mac" is far more useful, and tells us to pin a version that has one.
+./.venv/bin/python -m pip install --only-binary=:all: -r requirements.txt >>"$LOG" 2>&1 \
   || fail "could not install the required components."
 echo "      ${GREEN}done${OFF}"
 
