@@ -30,11 +30,22 @@ echo "This takes about 10 minutes, mostly downloading a browser."
 echo "You can leave it running. Nothing here touches ExtendedReach."
 echo
 
+LOG="$(pwd)/install-log.txt"
+
 fail() {
   echo
   echo "${RED}${BOLD}Stopped: $1${OFF}"
+  if [ -s "$LOG" ]; then
+    echo
+    echo "${BOLD}The actual error was:${OFF}"
+    echo "${DIM}------------------------------------------------------------${OFF}"
+    tail -18 "$LOG"
+    echo "${DIM}------------------------------------------------------------${OFF}"
+    echo
+    echo "Full details saved to: ${BOLD}install-log.txt${OFF} (next to this file)"
+  fi
   echo
-  echo "Copy everything above and send it to Claude — the message says what to do."
+  echo "Copy everything above and send it to Claude."
   echo
   echo "Press Return to close this window."
   read -r _
@@ -50,10 +61,10 @@ echo "${BOLD}[1/4]${OFF} Checking Python..."
 # that looks identical to not having installed it at all.
 PY=""
 FOUND_BUT_OLD=""
-CANDIDATES="python3.14 python3.13 python3.12 python3.11 python3"
+CANDIDATES="python3.13 python3.12 python3.11 python3.14 python3.15 python3"
 for dir in /Library/Frameworks/Python.framework/Versions/*/bin \
            /opt/homebrew/bin /usr/local/bin; do
-  for v in 3.14 3.13 3.12 3.11; do
+  for v in 3.13 3.12 3.11 3.14 3.15; do
     [ -x "$dir/python$v" ] && CANDIDATES="$CANDIDATES $dir/python$v"
   done
   [ -x "$dir/python3" ] && CANDIDATES="$CANDIDATES $dir/python3"
@@ -105,15 +116,19 @@ echo "${BOLD}[2/4]${OFF} Setting up a private workspace for this tool..."
 if [ ! -d .venv ]; then
   "$PY" -m venv .venv || fail "could not create the workspace folder (.venv)"
 fi
-./.venv/bin/pip install --upgrade pip >/dev/null 2>&1
-./.venv/bin/pip install -r requirements.txt >/dev/null 2>&1 \
-  || fail "could not download the required components. Check your internet connection."
+./.venv/bin/pip install --upgrade pip >"$LOG" 2>&1
+# Truncate before the step that matters, so the error shown on failure is that
+# step's own output and not the tail of a successful one.
+: > "$LOG"
+./.venv/bin/pip install -r requirements.txt >>"$LOG" 2>&1 \
+  || fail "could not install the required components."
 echo "      ${GREEN}done${OFF}"
 
 # ---------------------------------------------------------------- browser
 echo "${BOLD}[3/4]${OFF} Downloading the browser it drives (the slow part)..."
-./.venv/bin/playwright install chromium >/dev/null 2>&1 \
-  || fail "could not download Chromium. Check your internet connection and try again."
+: > "$LOG"
+./.venv/bin/playwright install chromium >>"$LOG" 2>&1 \
+  || fail "could not download Chromium."
 echo "      ${GREEN}done${OFF}"
 
 # ---------------------------------------------------------------- self-test
