@@ -113,28 +113,51 @@ echo "      ${GREEN}found $("$PY" --version) at $PY${OFF}"
 
 # ---------------------------------------------------------------- venv
 echo "${BOLD}[2/4]${OFF} Setting up a private workspace for this tool..."
-if [ ! -d .venv ]; then
-  "$PY" -m venv .venv || fail "could not create the workspace folder (.venv)"
+
+# Some Python installations arrive without pip, the part that downloads
+# packages. The python.org installer's own "Install Certificates" step fails
+# the same way ("No module named pip"). Left alone, venv then produces an
+# environment with no pip and every later step fails with a message that
+# blames the network. ensurepip ships inside Python and restores it.
+if ! "$PY" -m pip --version >/dev/null 2>&1; then
+  echo "      ${DIM}this Python is missing pip — repairing it${OFF}"
+  : > "$LOG"
+  "$PY" -m ensurepip --upgrade >>"$LOG" 2>&1 \
+    || fail "this Python installation is incomplete and could not be repaired. Re-run the installer from python.org, letting it finish completely."
 fi
-./.venv/bin/pip install --upgrade pip >"$LOG" 2>&1
+
+if [ ! -d .venv ]; then
+  : > "$LOG"
+  "$PY" -m venv .venv >>"$LOG" 2>&1 || fail "could not create the workspace folder (.venv)"
+fi
+
+# Same check inside the workspace: a venv built by a pip-less Python has none.
+if ! ./.venv/bin/python -m pip --version >/dev/null 2>&1; then
+  echo "      ${DIM}repairing the workspace${OFF}"
+  : > "$LOG"
+  ./.venv/bin/python -m ensurepip --upgrade >>"$LOG" 2>&1 \
+    || fail "the workspace has no package installer and could not be repaired."
+fi
+./.venv/bin/python -m pip install --upgrade pip >"$LOG" 2>&1
 # Truncate before the step that matters, so the error shown on failure is that
 # step's own output and not the tail of a successful one.
 : > "$LOG"
-./.venv/bin/pip install -r requirements.txt >>"$LOG" 2>&1 \
+./.venv/bin/python -m pip install -r requirements.txt >>"$LOG" 2>&1 \
   || fail "could not install the required components."
 echo "      ${GREEN}done${OFF}"
 
 # ---------------------------------------------------------------- browser
 echo "${BOLD}[3/4]${OFF} Downloading the browser it drives (the slow part)..."
 : > "$LOG"
-./.venv/bin/playwright install chromium >>"$LOG" 2>&1 \
+./.venv/bin/python -m playwright install chromium >>"$LOG" 2>&1 \
   || fail "could not download Chromium."
 echo "      ${GREEN}done${OFF}"
 
 # ---------------------------------------------------------------- self-test
 echo "${BOLD}[4/4]${OFF} Testing that everything works..."
-if ./.venv/bin/python -m pytest -q >/tmp/er-sync-tests.txt 2>&1; then
-  echo "      ${GREEN}$(grep -oE '[0-9]+ passed' /tmp/er-sync-tests.txt | tail -1) — all good${OFF}"
+if ./.venv/bin/python -m pytest >/tmp/er-sync-tests.txt 2>&1; then
+  passed="$(grep -oE '[0-9]+ passed' /tmp/er-sync-tests.txt | tail -1)"
+  echo "      ${GREEN}${passed:-all checks} — all good${OFF}"
 else
   tail -20 /tmp/er-sync-tests.txt
   fail "the self-test did not pass"

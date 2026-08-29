@@ -21,13 +21,13 @@ echo "==> Creating the virtual environment (.venv)"
 [ -d .venv ] || "$PYTHON" -m venv .venv
 
 echo "==> Installing Python dependencies"
-./.venv/bin/pip install --upgrade pip >/dev/null
-./.venv/bin/pip install -r requirements.txt
+./.venv/bin/python -m pip install --upgrade pip >/dev/null
+./.venv/bin/python -m pip install -r requirements.txt
 
 echo "==> Installing the Chromium build Playwright expects"
 # Chromium only. This tool drives one browser and has no reason to download
 # Firefox and WebKit as well.
-./.venv/bin/playwright install chromium
+./.venv/bin/python -m playwright install chromium
 
 echo "==> Running the offline test suite"
 ./.venv/bin/python -m pytest
