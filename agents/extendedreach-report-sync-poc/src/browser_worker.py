@@ -168,14 +168,41 @@ class BrowserWorker:
 
     # -- authentication ----------------------------------------------------
 
-    def _selector_present(self, selector: Optional[str], timeout_ms: int = 3000) -> bool:
+    def _frame_for(self, spec: Optional[dict[str, Any]]):
+        """The frame an element lives in, or the page itself.
+
+        ExtendedReach is a Lotus Domino application and puts its menu and its
+        report content in separate frames. An element inside one is invisible
+        to a locator on the main document, so anything that came from a frame
+        has to be looked for in that frame.
+        """
+        hint = (spec or {}).get("frame") or {}
+        if not hint:
+            return self.page
+
+        name = hint.get("name")
+        url_part = hint.get("url_contains")
+        for frame in self.page.frames:
+            if name and frame.name == name:
+                return frame
+            if url_part and url_part in (frame.url or ""):
+                return frame
+
+        raise BrowserWorkerError(
+            CATEGORY_PORTAL_CHANGED,
+            "the frame the export control lives in was not found; the portal "
+            "layout may have changed, or the page may not have finished loading")
+
+    def _selector_present(self, selector: Optional[str], timeout_ms: int = 3000,
+                          frame_spec: Optional[dict[str, Any]] = None) -> bool:
         """Existence check only. Reads no text off the page."""
         if not selector:
             return False
         try:
-            self.page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
+            root = self._frame_for(frame_spec)
+            root.wait_for_selector(selector, state="attached", timeout=timeout_ms)
             return True
-        except (PlaywrightTimeout, PlaywrightError):
+        except (PlaywrightTimeout, PlaywrightError, BrowserWorkerError):
             return False
 
     def detect_challenge(self) -> Optional[str]:
@@ -190,8 +217,10 @@ class BrowserWorker:
         return None
 
     def is_authenticated(self) -> bool:
-        selector = self.cfg.auth.get("authenticated_selector")
-        return self._selector_present(selector, timeout_ms=5000)
+        return self._selector_present(
+            self.cfg.auth.get("authenticated_selector"),
+            timeout_ms=5000,
+            frame_spec={"frame": self.cfg.auth.get("authenticated_frame")})
 
     def ensure_authenticated(self) -> None:
         """Check the session; in headed mode, wait for a human to sign in.
@@ -226,7 +255,8 @@ class BrowserWorker:
 
         selector = self.cfg.auth.get("authenticated_selector")
         try:
-            self.page.wait_for_selector(
+            root = self._frame_for({"frame": self.cfg.auth.get("authenticated_frame")})
+            root.wait_for_selector(
                 selector, state="attached",
                 timeout=self.cfg.login_wait_seconds * 1000)
         except (PlaywrightTimeout, PlaywrightError):
@@ -282,18 +312,20 @@ class BrowserWorker:
             self.goto(step.get("url", ""))
         elif action == "click_link":
             name = step.get("name", "")
-            link = self.page.get_by_role("link", name=name, exact=bool(step.get("exact"))).first
+            link = self._frame_for(step).get_by_role(
+                "link", name=name, exact=bool(step.get("exact"))).first
             link.wait_for(state="visible", timeout=self.cfg.nav_timeout_ms)
             link.click()
             self.page.wait_for_load_state("domcontentloaded")
         elif action == "click":
-            locator = self.page.locator(step["selector"]).first
+            locator = self._frame_for(step).locator(step["selector"]).first
             locator.wait_for(state="visible", timeout=self.cfg.nav_timeout_ms)
             locator.click()
             self.page.wait_for_load_state("domcontentloaded")
         elif action == "wait_for":
-            self.page.wait_for_selector(step["selector"], state="visible",
-                                        timeout=self.cfg.nav_timeout_ms)
+            self._frame_for(step).wait_for_selector(
+                step["selector"], state="visible",
+                timeout=self.cfg.nav_timeout_ms)
         elif action in {"select_option", "fill_filter", "check", "uncheck"}:
             self._apply_filter_step(step)
 
@@ -355,7 +387,7 @@ class BrowserWorker:
                     "filter value rejected by the non-sensitive pattern; this "
                     "guard keeps names and free text out of portal fields")
 
-        locator = self.page.locator(selector).first
+        locator = self._frame_for(spec).locator(selector).first
         locator.wait_for(state="visible", timeout=self.cfg.nav_timeout_ms)
 
         if kind == "select_option":
@@ -370,11 +402,12 @@ class BrowserWorker:
     # -- download ----------------------------------------------------------
 
     def _export_locator(self, export: dict[str, Any]):
+        root = self._frame_for(export)
         if export.get("selector"):
-            return self.page.locator(export["selector"]).first
+            return root.locator(export["selector"]).first
         role = export.get("role", "button")
         name = export.get("name", "")
-        return self.page.get_by_role(role, name=name).first
+        return root.get_by_role(role, name=name).first
 
     def download_report(self, report=None,
                         when: Optional[datetime] = None) -> DownloadResult:

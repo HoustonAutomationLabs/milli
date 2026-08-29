@@ -81,58 +81,125 @@ def _describe(page, handle) -> Optional[dict[str, Any]]:
         return None
 
 
-def _scan(page, pattern: re.Pattern[str], roles=("a", "button", "input")) -> list[dict[str, Any]]:
-    """Every element whose visible text or accessible attributes match."""
-    found: list[dict[str, Any]] = []
-    seen: set[str] = set()
+def _frames(page) -> list:
+    """Every frame in the page, main document first.
 
-    for tag in roles:
-        for handle in page.locator(tag).all():
+    Lotus Domino applications — which ExtendedReach is built on — put the menu
+    and the report content in separate frames. `page.locator()` only searches
+    the main document, so on those portals it finds nothing at all and the
+    scan looks broken when it is merely looking in the wrong place.
+    """
+    frames = [page.main_frame]
+    for frame in page.frames:
+        if frame is not page.main_frame:
+            frames.append(frame)
+    return frames
+
+
+def _frame_hint(frame, page) -> Optional[dict[str, str]]:
+    """How to find this frame again on a later run.
+
+    A name is stable and readable; a distinctive piece of the URL is the
+    fallback. None means the main document, which needs no hint.
+    """
+    if frame is page.main_frame:
+        return None
+    if frame.name:
+        return {"name": frame.name}
+    url = frame.url or ""
+    tail = url.rsplit("/", 1)[-1].split("?")[0]
+    return {"url_contains": tail} if tail else None
+
+
+def _scan(page, pattern: re.Pattern[str], roles=("a", "button", "input")) -> list[dict[str, Any]]:
+    """Every element whose visible text or accessible attributes match,
+    across every frame in the page."""
+    found: list[dict[str, Any]] = []
+    seen: set[tuple] = set()
+
+    for frame in _frames(page):
+        for tag in roles:
             try:
-                if not handle.is_visible():
-                    continue
-                haystack = " ".join(filter(None, [
-                    handle.inner_text() or "",
-                    handle.get_attribute("value") or "",
-                    handle.get_attribute("aria-label") or "",
-                    handle.get_attribute("title") or "",
-                    handle.get_attribute("href") or "",
-                ]))
+                handles = frame.locator(tag).all()
             except Exception:
-                continue
-            if not pattern.search(haystack):
-                continue
-            described = _describe(page, handle)
-            if described and described["selector"] not in seen:
-                seen.add(described["selector"])
-                found.append(described)
-            if len(found) >= MAX_CANDIDATES:
-                return found
+                continue                      # a frame can vanish mid-scan
+            for handle in handles:
+                try:
+                    if not handle.is_visible():
+                        continue
+                    haystack = " ".join(filter(None, [
+                        handle.inner_text() or "",
+                        handle.get_attribute("value") or "",
+                        handle.get_attribute("aria-label") or "",
+                        handle.get_attribute("title") or "",
+                        handle.get_attribute("href") or "",
+                    ]))
+                except Exception:
+                    continue
+                if not pattern.search(haystack):
+                    continue
+                described = _describe(page, handle)
+                if not described:
+                    continue
+                described["frame"] = _frame_hint(frame, page)
+                key = (described["selector"], str(described["frame"]))
+                if key not in seen:
+                    seen.add(key)
+                    found.append(described)
+                if len(found) >= MAX_CANDIDATES:
+                    return found
     return found
 
 
-def _choose(candidates: list[dict[str, Any]], what: str) -> Optional[str]:
-    """Print numbered candidates and let the operator pick one."""
+def _report_page_shape(page) -> str:
+    """A one-line description of what is on the page, printed when a scan finds
+    nothing. Without it, "no candidate found" gives no clue whether the page
+    was empty, framed, or simply worded unexpectedly."""
+    parts = []
+    for frame in _frames(page):
+        try:
+            links = frame.locator("a").count()
+            buttons = frame.locator("button, input[type=button], input[type=submit]").count()
+        except Exception:
+            continue
+        label = "main page" if frame is page.main_frame else (
+            f"frame {frame.name!r}" if frame.name else "unnamed frame")
+        parts.append(f"{label}: {links} links, {buttons} buttons")
+    return "; ".join(parts) if parts else "nothing readable"
+
+
+def _choose(candidates: list[dict[str, Any]], what: str, page=None):
+    """Print numbered candidates and let the operator pick one.
+
+    Returns (selector, frame_hint), both None if nothing was chosen.
+    """
     if not candidates:
         print(f"\n  No obvious candidate found for the {what}.")
+        if page is not None:
+            print(f"  What this page contains: {_report_page_shape(page)}")
         print("  You will need to find this one in Chrome: right-click the")
         print("  element, Inspect, then right-click the highlighted markup ->")
         print("  Copy -> Copy selector.")
-        return None
+        return None, None
 
     print(f"\n  Candidates for the {what}:\n")
     for index, item in enumerate(candidates, start=1):
         label = item["text"] or f"<{item['tag']}>"
-        print(f"    {index:2}. {label!r}")
+        where = ""
+        if item.get("frame"):
+            hint = item["frame"]
+            where = f"   [in frame {hint.get('name') or hint.get('url_contains')}]"
+        print(f"    {index:2}. {label!r}{where}")
         print(f"        {item['selector']}")
 
     while True:
         answer = input(f"\n  Which number is the {what}? "
                        "(Enter to skip) ").strip()
         if not answer:
-            return None
+            return None, None
         if answer.isdigit() and 1 <= int(answer) <= len(candidates):
-            return candidates[int(answer) - 1]["selector"]
+            chosen = candidates[int(answer) - 1]
+            return chosen["selector"], chosen.get("frame")
         print("  Not one of the numbers listed.")
 
 
@@ -197,14 +264,15 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
             print("  the browser asks; nothing to choose here.")
             input("\n  Press Enter once you can see the home page. ")
             auth_selector = document["auth"]["authenticated_selector"]
+            auth_frame = document["auth"].get("authenticated_frame")
         else:
             print("  Sign in in the browser window, including MFA if asked.")
             print("  Nothing here types anything for you.")
             input("\n  Press Enter once you can see the ExtendedReach home page. ")
             signed_in = _scan(page, SIGNED_IN_TEXT)
-            auth_selector = _choose(
+            auth_selector, auth_frame = _choose(
                 signed_in, "element that only appears when you are signed in "
-                           "(a Sign Out link is the usual one)")
+                           "(a Sign Out link is the usual one)", page)
 
         # -- step 2: the report -----------------------------------------
         print(f"\n  STEP 2 of 3 - Open the report you want to call '{slug}'")
@@ -218,7 +286,8 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
         print("\n  STEP 3 of 3 - Identify the export control")
         print("  Do NOT click it. Just identify it below.")
         export_candidates = _scan(page, EXPORT_TEXT)
-        export_selector = _choose(export_candidates, "export/Excel control")
+        export_selector, export_frame = _choose(
+            export_candidates, "export/Excel control", page)
 
         mfa_candidates = _scan(page, MFA_HINT, roles=("input",))
 
@@ -226,6 +295,8 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
     document.setdefault("auth", {})
     if auth_selector:
         document["auth"]["authenticated_selector"] = auth_selector
+        if auth_frame:
+            document["auth"]["authenticated_frame"] = auth_frame
     document["auth"].setdefault("login_form_selector", "")
     if mfa_candidates and not _is_configured(
             (document["auth"].get("mfa_selectors") or [None])[0]):
@@ -248,7 +319,9 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
         "description": f"TODO(operator): what {slug} is, in plain words.",
         "navigation": {"mode": "direct_url", "direct_url": report_url},
         "filters": [],
-        "export": ({"selector": export_selector} if export_selector
+        "export": ({"selector": export_selector, **({"frame": export_frame}
+                                                    if export_frame else {})}
+                   if export_selector
                    else {"selector": "TODO_CSS_SELECTOR_FOR_EXPORT_CONTROL"}),
         "validation": {
             "expected_csv_headers": [],
