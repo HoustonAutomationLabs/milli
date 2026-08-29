@@ -526,3 +526,26 @@ def test_the_git_root_is_still_protected_when_present(tmp_path):
     repository boundary."""
     roots = config_module._protected_roots()
     assert config_module._project_root() in roots
+
+
+# -- driving an already-installed browser -----------------------------------
+
+def test_no_browser_channel_means_playwrights_own_chromium(tmp_path):
+    cfg = _config(tmp_path)
+    assert cfg.browser_channel == ""
+    assert _errors(cfg) == []
+
+
+@pytest.mark.parametrize("channel", ["chrome", "msedge", "chrome-beta"])
+def test_a_known_browser_channel_is_accepted(tmp_path, channel):
+    """Older macOS releases have no Playwright-built Chromium, so the installed
+    Google Chrome is the only way through."""
+    assert _errors(_config(tmp_path, browser_channel=channel)) == []
+
+
+@pytest.mark.parametrize("channel", ["Chrome", "firefox", "safari", "chromium"])
+def test_an_unknown_browser_channel_is_refused(tmp_path, channel):
+    """A typo here would otherwise surface as an opaque launch failure much
+    later, with the browser window already open."""
+    cfg = _config(tmp_path, browser_channel=channel)
+    assert "BROWSER_CHANNEL" in _keys(_errors(cfg))

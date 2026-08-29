@@ -118,18 +118,27 @@ class BrowserWorker:
         self.cfg.download_dir.mkdir(parents=True, exist_ok=True)
         try:
             self._playwright = sync_playwright().start()
-            self._context = self._playwright.chromium.launch_persistent_context(
+            launch_options = dict(
                 user_data_dir=str(self.cfg.browser_profile_dir),
                 headless=not self.headed,
                 accept_downloads=True,
                 downloads_path=str(self.cfg.download_dir),
                 args=["--disable-background-networking"],
             )
+            # Drive an already-installed browser when one is configured.
+            # Playwright stopped building its own Chromium for older macOS
+            # releases, and on those the installed Google Chrome is the only
+            # way through. It is the same engine either way.
+            if self.cfg.browser_channel:
+                launch_options["channel"] = self.cfg.browser_channel
+            self._context = self._playwright.chromium.launch_persistent_context(
+                **launch_options)
         except PlaywrightError as exc:
-            raise BrowserWorkerError(
-                CATEGORY_BROWSER_FAILED,
-                "chromium did not start; run scripts/install_playwright.sh"
-            ) from None
+            detail = ("chromium did not start; run the installer again"
+                      if not self.cfg.browser_channel else
+                      f"the '{self.cfg.browser_channel}' browser did not start; "
+                      "check it is installed in your Applications folder")
+            raise BrowserWorkerError(CATEGORY_BROWSER_FAILED, detail) from None
         self._context.set_default_timeout(self.cfg.nav_timeout_ms)
         self.page = (self._context.pages[0] if self._context.pages
                      else self._context.new_page())

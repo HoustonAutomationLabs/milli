@@ -151,11 +151,40 @@ fi
 echo "      ${GREEN}done${OFF}"
 
 # ---------------------------------------------------------------- browser
-echo "${BOLD}[3/4]${OFF} Downloading the browser it drives (the slow part)..."
+echo "${BOLD}[3/4]${OFF} Setting up the browser it drives..."
 : > "$LOG"
-./.venv/bin/python -m playwright install chromium >>"$LOG" 2>&1 \
-  || fail "could not download Chromium."
-echo "      ${GREEN}done${OFF}"
+if ./.venv/bin/python -m playwright install chromium >>"$LOG" 2>&1; then
+  echo "      ${GREEN}done${OFF}"
+else
+  # Playwright stopped building its own Chromium for older macOS releases. On
+  # those it refuses with "does not support chromium on macNN" — which is not a
+  # download problem and no amount of retrying fixes it. An installed Google
+  # Chrome is the same engine and works, so use that instead of stopping.
+  if grep -qiE "does not support chromium on mac" "$LOG"; then
+    if [ -d "/Applications/Google Chrome.app" ]; then
+      echo "      ${DIM}this macOS is too old for Playwright's own browser${OFF}"
+      echo "      ${DIM}using the Google Chrome already installed instead${OFF}"
+      if [ -f .env ]; then
+        grep -q '^BROWSER_CHANNEL=' .env || printf '\nBROWSER_CHANNEL=chrome\n' >> .env
+      fi
+      NEEDS_CHROME_CHANNEL="yes"
+      echo "      ${GREEN}done${OFF}"
+    else
+      echo
+      echo "${RED}This macOS is too old for the browser Playwright downloads,${OFF}"
+      echo "${RED}and Google Chrome is not installed to use instead.${OFF}"
+      echo
+      echo "  Install Google Chrome from ${BOLD}google.com/chrome${OFF}, then run"
+      echo "  this installer again. Nothing else needs to change."
+      echo
+      echo "Press Return to close this window."
+      read -r _
+      exit 1
+    fi
+  else
+    fail "could not set up the browser."
+  fi
+fi
 
 # ---------------------------------------------------------------- self-test
 echo "${BOLD}[4/4]${OFF} Testing that everything works..."
@@ -170,6 +199,15 @@ fi
 # ---------------------------------------------------------------- done
 echo
 echo "${GREEN}${BOLD}Installed successfully.${OFF}"
+if [ "${NEEDS_CHROME_CHANNEL:-}" = "yes" ]; then
+  echo
+  echo "${BOLD}One thing to remember for later:${OFF} this Mac uses your installed"
+  echo "Google Chrome rather than a downloaded one. When you create your .env"
+  echo "file, it needs this line — the installer adds it automatically if the"
+  echo "file already exists:"
+  echo
+  echo "    ${BOLD}BROWSER_CHANNEL=chrome${OFF}"
+fi
 echo
 echo "Nothing is connected to ExtendedReach or Google yet — that is the next part,"
 echo "and it needs you. Here is where you stand:"

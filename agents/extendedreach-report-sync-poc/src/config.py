@@ -194,6 +194,12 @@ class AppConfig:
     google_scopes: list[str] = field(
         default_factory=lambda: ["https://www.googleapis.com/auth/drive.file"])
 
+    # Which browser to drive. Empty means the Chromium Playwright downloads.
+    # "chrome" or "msedge" drives a copy already installed on the machine,
+    # which is the only option on a macOS version Playwright no longer builds
+    # its own Chromium for.
+    browser_channel: str = ""
+
     screenshot_on_failure: bool = False
     login_wait_seconds: int = 300
     nav_timeout_ms: int = 45_000
@@ -316,6 +322,7 @@ def load(env_file: Optional[str] = None,
         google_token_file=path_env("GOOGLE_TOKEN_FILE", "~/er-sync/token.json"),
         google_scopes=_split_csv(os.getenv("GOOGLE_DRIVE_SCOPES"))
                       or ["https://www.googleapis.com/auth/drive.file"],
+        browser_channel=os.getenv("BROWSER_CHANNEL", "").strip(),
         screenshot_on_failure=_env_bool("SCREENSHOT_ON_FAILURE", False),
         login_wait_seconds=_env_int("LOGIN_WAIT_SECONDS", 300),
         nav_timeout_ms=_env_int("NAV_TIMEOUT_MS", 45_000),
@@ -494,6 +501,12 @@ def validate(cfg: AppConfig, *, require_drive: bool = True) -> list[Problem]:
             err(key, "still contains a TODO placeholder")
 
     # -- validation rules --------------------------------------------------
+    allowed_channels = {"", "chrome", "chrome-beta", "msedge", "msedge-beta"}
+    if cfg.browser_channel not in allowed_channels:
+        err("BROWSER_CHANNEL",
+            f"{cfg.browser_channel!r} is not one of {sorted(allowed_channels - {''})} "
+            "(leave it blank to use Playwright's own Chromium)")
+
     if cfg.min_file_bytes < 1:
         err("MIN_FILE_BYTES", "must be at least 1")
     unknown = cfg.allowed_extensions - APPROVED_EXTENSIONS
