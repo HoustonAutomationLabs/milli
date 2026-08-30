@@ -172,3 +172,69 @@ def test_the_recorded_selector_finds_the_element_again(page, portal):
     found = [f for f in page.frames if hint["url_contains"] in (f.url or "")]
     assert len(found) == 1
     assert found[0].locator(click["selector"]).count() == 1
+
+
+# -- exports that open a new window -----------------------------------------
+
+@pytest.fixture()
+def popup_portal(tmp_path):
+    """A portal whose export opens in a new window, as Domino often does."""
+    with (tmp_path / "openbeds.csv").open("w", newline="") as handle:
+        w = csv.writer(handle)
+        w.writerow(["Home", "County", "Beds Open"])
+        w.writerow(["Sample Home A", "Harris", "3"])
+    (tmp_path / "app.html").write_text(
+        '<html><frameset cols="25%,75%">'
+        '<frame name="NotesView" src="menu.html">'
+        '<frame src="body.html">'
+        '</frameset></html>', encoding="utf-8")
+    (tmp_path / "menu.html").write_text('<html><body>menu</body></html>',
+                                        encoding="utf-8")
+    # The export opens a popup, which then downloads.
+    (tmp_path / "body.html").write_text(
+        '<html><body><a id="xl" href="popup.html" target="_blank">Excel</a>'
+        '</body></html>', encoding="utf-8")
+    (tmp_path / "popup.html").write_text(
+        '<html><body><a id="inner" href="openbeds.csv" download>Download</a>'
+        '</body></html>', encoding="utf-8")
+    return tmp_path
+
+
+def test_a_click_in_a_popup_window_is_still_recorded(browser, popup_portal):
+    """The bug this covers: the recorder was attached to a single page, so an
+    export that opened a new window was never seen and the run silently
+    recorded nothing — indistinguishable from the operator not clicking."""
+    ctx = browser.new_context(accept_downloads=True)
+    recorder.install(ctx)                     # context-level, not page-level
+    page = ctx.new_page()
+    page.goto(f"file://{popup_portal}/app.html")
+
+    frame = next(f for f in page.frames if f.locator("#xl").count())
+    with ctx.expect_page() as popup_info:
+        frame.locator("#xl").click()
+    popup = popup_info.value
+    popup.wait_for_load_state()
+    assert len(ctx.pages) == 2
+
+    # The click that matters happens in the NEW window.
+    recorder.clear_clicks(ctx)
+    popup.locator("#inner").click()
+
+    click = recorder.last_click(ctx)
+    assert click is not None, "a click in a second window was not seen"
+    assert click["selector"] == "#inner"
+    ctx.close()
+
+
+def test_surfaces_are_described_when_nothing_was_recorded(browser, popup_portal):
+    """So a failed capture says what was open, instead of just "nothing"."""
+    ctx = browser.new_context(accept_downloads=True)
+    recorder.install(ctx)
+    page = ctx.new_page()
+    page.goto(f"file://{popup_portal}/app.html")
+
+    assert recorder.last_click(ctx) is None
+    described = recorder.describe_surfaces(ctx)
+    assert "window 1" in described
+    assert "frame(s)" in described
+    ctx.close()

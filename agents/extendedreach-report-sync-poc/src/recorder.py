@@ -60,9 +60,22 @@ if (!window.__erInstalled) {
 """
 
 
-def install(page) -> None:
-    """Arm the recorder. Must be called before navigating."""
-    page.add_init_script(RECORDER_SCRIPT)
+def install(target) -> None:
+    """Arm the recorder. Must be called before navigating.
+
+    Prefer passing the browser *context*, not a page: a context-level init
+    script reaches every page it opens, including new tabs and popups. Domino
+    commonly opens an export in a new window, and a page-level script never
+    reaches it — the click is simply never seen, which is indistinguishable
+    from the operator not having clicked.
+    """
+    target.add_init_script(RECORDER_SCRIPT)
+
+
+def _pages(target) -> list:
+    """Every page to inspect: a context's pages, or the single page given."""
+    pages = getattr(target, "pages", None)
+    return list(pages) if pages is not None else [target]
 
 
 def frame_hint(frame, page) -> Optional[dict[str, str]]:
@@ -80,7 +93,7 @@ def frame_hint(frame, page) -> Optional[dict[str, str]]:
     return {"url_contains": tail} if tail else None
 
 
-def last_click(page) -> Optional[dict[str, Any]]:
+def last_click(target) -> Optional[dict[str, Any]]:
     """The most recent click across every frame, with its frame hint.
 
     Returns None if nothing was clicked, which is a real answer: it means the
@@ -88,17 +101,18 @@ def last_click(page) -> Optional[dict[str, Any]]:
     we can see.
     """
     best = None
-    for frame in page.frames:
-        try:
-            got = frame.evaluate("window.__erLastClick || null")
-        except Exception:
-            continue                      # a frame can navigate away mid-read
-        if got and (best is None or got["at"] > best[0]["at"]):
-            best = (got, frame)
+    for page in _pages(target):
+        for frame in page.frames:
+            try:
+                got = frame.evaluate("window.__erLastClick || null")
+            except Exception:
+                continue                  # a frame can navigate away mid-read
+            if got and (best is None or got["at"] > best[0]["at"]):
+                best = (got, frame, page)
 
     if best is None:
         return None
-    click, frame = best
+    click, frame, page = best
     return {
         "selector": click["selector"],
         "tag": click["tag"],
@@ -107,16 +121,32 @@ def last_click(page) -> Optional[dict[str, Any]]:
     }
 
 
-def clear_clicks(page) -> None:
+def clear_clicks(target) -> None:
     """Forget any earlier click, so one recording cannot pick up the last."""
-    for frame in page.frames:
-        try:
-            frame.evaluate("window.__erLastClick = null")
-        except Exception:
-            continue
+    for page in _pages(target):
+        for frame in page.frames:
+            try:
+                frame.evaluate("window.__erLastClick = null")
+            except Exception:
+                continue
 
 
-def has_visible_password(page) -> bool:
+def describe_surfaces(target) -> str:
+    """What is open right now, for when nothing was recorded.
+
+    "No click seen" on its own gives no clue whether the export opened a new
+    window, whether the page was framed, or whether the button was simply
+    never pressed.
+    """
+    parts = []
+    for index, page in enumerate(_pages(target), start=1):
+        frames = len(page.frames)
+        tail = (page.url or "").rsplit("/", 1)[-1].split("?")[0] or "(blank)"
+        parts.append(f"window {index}: {tail}, {frames} frame(s)")
+    return "; ".join(parts) if parts else "nothing open"
+
+
+def has_visible_password(target) -> bool:
     """Whether a password field is visible in any frame.
 
     This is the sign-in test. A negative check needs no configuration at all,
@@ -124,12 +154,13 @@ def has_visible_password(page) -> bool:
     portal and could not be captured on this one. Every sign-in page has a
     password field; no signed-in page does.
     """
-    for frame in page.frames:
-        try:
-            fields = frame.locator("input[type=password]")
-            for index in range(fields.count()):
-                if fields.nth(index).is_visible():
-                    return True
-        except Exception:
-            continue
+    for page in _pages(target):
+        for frame in page.frames:
+            try:
+                fields = frame.locator("input[type=password]")
+                for index in range(fields.count()):
+                    if fields.nth(index).is_visible():
+                        return True
+            except Exception:
+                continue
     return False

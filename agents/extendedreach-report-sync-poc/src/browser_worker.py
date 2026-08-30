@@ -111,6 +111,10 @@ class BrowserWorker:
         self._playwright = None
         self._context = None
         self.page: Optional[Page] = None
+        # Downloads are collected from the whole context, not one page: this
+        # portal opens exports in a new window, and a page-level wait never
+        # sees them.
+        self._downloads: list = []
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -141,6 +145,7 @@ class BrowserWorker:
                       "check it is installed in your Applications folder")
             raise BrowserWorkerError(CATEGORY_BROWSER_FAILED, detail) from None
         self._context.set_default_timeout(self.cfg.nav_timeout_ms)
+        self._context.on("download", self._downloads.append)
         self.page = (self._context.pages[0] if self._context.pages
                      else self._context.new_page())
         self.log.info("Browser started (headed=%s, profile outside repo)", self.headed)
@@ -153,6 +158,29 @@ class BrowserWorker:
         finally:
             if self._playwright:
                 self._playwright.stop()
+
+    @property
+    def context(self):
+        """The browser context, for anything that must span every window."""
+        return self._context
+
+    def take_download(self, timeout_s: float = 2.0):
+        """The most recent download from any window, or None.
+
+        Collected by an event handler rather than waited for, so a download
+        that lands in a popup — or one that finished while the operator was
+        reading the prompt — is still caught.
+        """
+        deadline = time.monotonic() + timeout_s
+        while not self._downloads and time.monotonic() < deadline:
+            try:
+                self.page.wait_for_timeout(200)
+            except PlaywrightError:
+                break
+        return self._downloads.pop() if self._downloads else None
+
+    def clear_downloads(self) -> None:
+        self._downloads.clear()
 
     # -- navigation --------------------------------------------------------
 

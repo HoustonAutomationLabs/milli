@@ -549,3 +549,31 @@ def test_an_unknown_browser_channel_is_refused(tmp_path, channel):
     later, with the browser window already open."""
     cfg = _config(tmp_path, browser_channel=channel)
     assert "BROWSER_CHANNEL" in _keys(_errors(cfg))
+
+
+# -- the placeholder that survived every recording session ------------------
+
+def test_a_blank_sign_in_selector_is_accepted(tmp_path):
+    """Empty is the supported default: the session check is the absence of a
+    password field, which needs no configuration."""
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["auth"]["authenticated_selector"] = ""
+    assert _errors(_config(tmp_path, workflow_json=workflow)) == []
+
+
+def test_a_placeholder_sign_in_selector_is_still_refused(tmp_path):
+    """It would be taken as a real selector and never match, so the run would
+    sit waiting for an element that does not exist."""
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["auth"]["authenticated_selector"] = \
+        "TODO_CSS_SELECTOR_VISIBLE_ONLY_WHEN_SIGNED_IN"
+    cfg = _config(tmp_path, workflow_json=workflow)
+    problems = _errors(cfg)
+    assert "workflow.auth.authenticated_selector" in _keys(problems)
+    assert any("leave it empty" in p.detail for p in problems)
+
+
+def test_a_missing_sign_in_selector_key_is_accepted(tmp_path):
+    workflow = json.loads(json.dumps(WORKFLOW))
+    workflow["auth"].pop("authenticated_selector", None)
+    assert _errors(_config(tmp_path, workflow_json=workflow)) == []

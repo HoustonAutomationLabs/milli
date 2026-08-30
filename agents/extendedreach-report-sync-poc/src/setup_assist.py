@@ -227,30 +227,29 @@ def _capture_one_report(worker, page, document, slug, cfg, log) -> bool:
     print("     the file. A real report downloads; that is expected, and it is")
     print("     how the column names get filled in.")
 
-    recorder.clear_clicks(page)
-    download = None
-    try:
-        with page.expect_download(timeout=cfg.download_timeout_ms) as info:
-            input("\n     Press Enter AFTER the download has started. ")
-        download = info.value
-    except Exception:
-        print("\n     No download arrived.")
+    context = worker.context
+    while True:
+        recorder.clear_clicks(context)
+        worker.clear_downloads()   # else a previous report's file counts here
+        download = None
+        print("\n     Click it now. Then come back here.")
+        input("     Press Enter once you have clicked (and any download finished). ")
 
-    click = recorder.last_click(page)
+        # Downloads are collected on the context, so one that lands in a new
+        # window still counts.
+        download = worker.take_download()
+        click = recorder.last_click(context)
 
-    if click is None and download is None:
-        print("     No click was recorded either. Nothing to save for this one.")
-        print("     If the export opens a new window, try again and click the")
-        print("     control in the original window.")
-        return False
+        if click or download:
+            break
 
-    if click:
-        where = click["frame_label"] or "the main page"
-        print(f"\n     Recorded: {click['tag']} '{click['selector']}'  "
-              f"[in {where}]")
-    else:
-        print("\n     A file downloaded but no click was seen; saving the file"
-              " details only.")
+        print("\n     I did not see a click or a download.")
+        print(f"     What is open: {recorder.describe_surfaces(context)}")
+        print("     If the export opened a new window, click the button in")
+        print("     THAT window and try again.")
+        if input("     Try again for this report? (Y/n) ").strip().lower() == "n":
+            print("     Skipping this one; nothing saved for it.")
+            return False
 
     headers: list[str] = []
     extension = "csv"
@@ -327,7 +326,10 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
     captured: list[str] = []
     with BrowserWorker(cfg, log, headed=True) as worker:
         page = worker.page
-        recorder.install(page)          # must be armed before navigating
+        # Arm at the context level so new tabs and popups are covered too:
+        # this portal opens exports in a new window, and a page-level script
+        # never reaches it.
+        recorder.install(worker.context)
         worker.goto(cfg.base_url)
 
         print("\n  STEP 1 — Sign in")
@@ -343,7 +345,14 @@ def run_setup_assist(cfg, log, out_path: Path, slug: Optional[str] = None,
         # No sign-in selector is captured on purpose: the check is the absence
         # of a password field, which needs no configuration and works here.
         document.setdefault("auth", {})
-        document["auth"].setdefault("authenticated_selector", "")
+        # Overwrite, not setdefault: the example ships a TODO placeholder here,
+        # and setdefault leaves an existing value alone — so the placeholder
+        # survived every recording session and failed validation afterwards.
+        # An empty value is the supported default: the session check is the
+        # absence of a password field.
+        current = str(document["auth"].get("authenticated_selector") or "")
+        if not current or "TODO" in current.upper():
+            document["auth"]["authenticated_selector"] = ""
         document["auth"].setdefault("login_form_selector", "input[type=password]")
         document["auth"].setdefault("mfa_selectors", [])
         document["auth"].setdefault("captcha_selectors", [
