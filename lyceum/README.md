@@ -20,14 +20,30 @@ string — there are five:
 **The logo.** The mark in the masthead is an SVG drawn in the spirit of your gold
 logo — a column, a ring, a circuit node — because the PNG wasn't available to embed.
 To use the real one, drop it at `lyceum/assets/lyceum-mark.png` and replace the
-`<svg class="brand-mark">…</svg>` block with:
+`<svg class="brand-mark">…</svg>` element with:
 
 ```html
 <img src="assets/lyceum-mark.png" alt="" class="brand-mark" />
 ```
 
-The transparent-background version works as-is on the dark ground. There's a comment at
-that spot in the source saying the same thing.
+Leave the `<span class="brand-plate">` wrapper in place. That navy square is
+deliberate: gold on a beige ground has roughly 2:1 contrast and goes muddy, especially
+on a projector or an older laptop screen. On navy the same gold sits at about 10:1, and
+your transparent PNG drops straight in.
+
+## Readability
+
+The page is set at 17.5px with a 1.72 line height, body weight 400 — larger and heavier
+than a typical marketing site, because the audience is principal engineers and PMs
+rather than a consumer feed. Every text/background pair on the page was measured and
+clears WCAG AA; the ratios are recorded in a comment at the top of the stylesheet. Two
+rules to keep if you edit it:
+
+- **Don't drop body text below 4.5:1.** The temptation is a lighter grey for "secondary"
+  text; `--slate` (7.67:1) and `--slate-soft` (5.21:1) are the two you have.
+- **Never let color be the only signal.** A passed check reads green *and* shows a
+  check mark *and* says "Pass". Roughly 1 in 12 men has some color-vision deficiency,
+  and this audience is overwhelmingly male.
 
 ## Claims policy
 
