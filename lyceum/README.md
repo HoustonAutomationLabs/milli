@@ -7,15 +7,26 @@ paste it into Assembly as a custom page / embed.
 ## What to swap before it goes live
 
 Everything that needs your input is marked `TODO(lyceum)` in the source. Search for that
-string — there are five:
+string — there are four:
 
 | Location | What to replace |
 |---|---|
-| Masthead CTA | "Start a working session" → your Assembly booking link or message channel |
 | Hero, both buttons | Intake link, and the `#how` anchor if you'd rather deep-link |
 | Closing band | Intake form URL |
 | Closing band, email | `hello@lyceumgroup.com` → the real address **on your domain**, not a personal inbox |
 | Footer links | Contact / privacy destinations |
+
+**Already wired:** the masthead "Log in" button points at
+`https://lyceumgroup.myassembly.com`, read from the Assembly workspace itself rather
+than guessed. That workspace has client direct sign-up enabled, so the same page serves
+returning clients and new accounts — which is why the button says "Log in" and not
+"Client portal".
+
+The page's navy is `#13182F`, the accent color set on your Assembly portal. A visitor
+clicking "Log in" lands on a portal in the same color rather than one that shifts
+underfoot. If you ever change the portal accent, change this token too. (The portal is
+set in Manrope; this page uses IBM Plex Sans, which holds up better at reading size.
+Worth matching them if you want the seam to be invisible — say the word.)
 
 **The logo.** The mark in the masthead is an SVG drawn in the spirit of your gold
 logo — a column, a ring, a circuit node — because the PNG wasn't available to embed.

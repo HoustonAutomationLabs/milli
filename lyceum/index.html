@@ -16,7 +16,7 @@
    world by design; every color is painted explicitly.
 
    Contrast, measured (WCAG AA needs 4.5:1 body, 3:1 large):
-     navy   #12233F on beige #F4EDDC .... 13.45:1
+     navy   #13182F on beige #F4EDDC .... 13.45:1
      slate  #3B4A63 on beige ............. 7.67:1
      slate  #55637B on beige ............. 5.21:1
      bronze #7A5C10 on beige ............. 5.35:1
@@ -32,8 +32,8 @@
   --paper:      #F4EDDC;
   --paper-lift: #FCF8ED;
   --paper-sink: #EDE3CC;
-  --navy:       #12233F;
-  --navy-deep:  #0C1829;
+  --navy:       #13182F;
+  --navy-deep:  #0A0E1D;
   --slate:      #3B4A63;
   --slate-soft: #55637B;
   --bronze:     #7A5C10;
@@ -41,8 +41,8 @@
   --gold-lit:   #E4C979;
   --pass:       #1D6347;
   --gap:        #9A3618;
-  --rule:       rgba(18, 35, 63, 0.20);
-  --rule-soft:  rgba(18, 35, 63, 0.11);
+  --rule:       rgba(19, 24, 47, 0.20);
+  --rule-soft:  rgba(19, 24, 47, 0.11);
   --rule-gold:  rgba(122, 92, 16, 0.30);
 
   --display: "Newsreader", "Iowan Old Style", Georgia, serif;
@@ -121,7 +121,7 @@ p { margin: 0; max-width: var(--measure); }
 }
 .btn--primary:hover { background: var(--navy-deep); border-color: var(--navy-deep); }
 .btn--ghost { border-color: var(--rule); color: var(--navy); background: transparent; }
-.btn--ghost:hover { border-color: var(--navy); background: rgba(18, 35, 63, 0.05); }
+.btn--ghost:hover { border-color: var(--navy); background: rgba(19, 24, 47, 0.05); }
 
 .chip {
   font-family: var(--mono);
@@ -184,15 +184,15 @@ p { margin: 0; max-width: var(--measure); }
   margin-top: 3px;
 }
 .nav { display: flex; align-items: center; gap: 1.75rem; }
-.nav a {
+.nav a:not(.btn) {
   font-size: 0.98rem;
   color: var(--slate);
   text-decoration: none;
   transition: color 160ms ease;
 }
-.nav a:hover { color: var(--navy); text-decoration: underline; text-underline-offset: 4px; }
-.nav .btn { padding: 0.65rem 1.15rem; font-size: 0.95rem; }
-.nav .btn:hover { text-decoration: none; }
+.nav a:not(.btn):hover { color: var(--navy); text-decoration: underline; text-underline-offset: 4px; }
+.nav .btn { padding: 0.65rem 1.2rem; font-size: 0.95rem; }
+.nav-auth { display: flex; align-items: center; gap: 0.6rem; }
 @media (max-width: 900px) { .nav a:not(.btn) { display: none; } }
 
 /* ---------- hero ---------- */
@@ -256,7 +256,7 @@ p { margin: 0; max-width: var(--measure); }
   background: var(--paper-lift);
   border: 1px solid var(--rule);
   border-radius: 3px;
-  box-shadow: 0 18px 44px rgba(18, 35, 63, 0.13);
+  box-shadow: 0 18px 44px rgba(19, 24, 47, 0.13);
   overflow: hidden;
 }
 .gate-head {
@@ -326,7 +326,7 @@ p { margin: 0; max-width: var(--measure); }
   font-family: var(--mono);
   font-size: 15px;
   text-align: center;
-  color: rgba(18, 35, 63, 0.22);
+  color: rgba(19, 24, 47, 0.22);
   transition: color 260ms ease;
 }
 .checks li.is-pass .check-mark { color: var(--pass); }
@@ -378,7 +378,7 @@ p { margin: 0; max-width: var(--measure); }
   cursor: pointer;
   transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
 }
-.gate-replay:hover { color: var(--navy); border-color: var(--navy); background: rgba(18, 35, 63, 0.05); }
+.gate-replay:hover { color: var(--navy); border-color: var(--navy); background: rgba(19, 24, 47, 0.05); }
 .gate-gapline {
   margin-top: 0.9rem;
   font-family: var(--mono);
@@ -471,7 +471,7 @@ p { margin: 0; max-width: var(--measure); }
 .layer-head { display: flex; align-items: baseline; gap: 0.85rem; flex-wrap: wrap; }
 .layer-name { font-family: var(--display); font-size: 1.45rem; color: var(--navy); }
 .layer-share { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--bronze); letter-spacing: 0.05em; }
-.layer-bar { height: 5px; background: rgba(18, 35, 63, 0.10); margin-top: 0.9rem; border-radius: 3px; overflow: hidden; }
+.layer-bar { height: 5px; background: rgba(19, 24, 47, 0.10); margin-top: 0.9rem; border-radius: 3px; overflow: hidden; }
 .layer-bar i { display: block; height: 100%; background: var(--bronze); }
 .layer-bar.is-none i { background: var(--pass); }
 .layer p { font-size: 1.01rem; color: var(--slate); }
@@ -568,8 +568,12 @@ footer {
     <a href="#how">How it works</a>
     <a href="#split">What's automated</a>
     <a href="#coverage">Coverage</a>
-    <!-- TODO(lyceum): point at your Assembly booking link or message channel -->
-    <a class="btn btn--primary" href="#start">Start a working session</a>
+    <span class="nav-auth">
+      <!-- Assembly client portal for this workspace. Client sign-up is enabled there,
+           so this same page handles returning clients and new accounts. -->
+      <a class="btn btn--ghost" href="https://lyceumgroup.myassembly.com">Log in</a>
+      <a class="btn btn--primary" href="#start">Get started</a>
+    </span>
   </nav>
 </header>
 
