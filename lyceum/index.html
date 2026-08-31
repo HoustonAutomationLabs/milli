@@ -493,6 +493,71 @@ p { margin: 0; max-width: var(--measure); }
 
 /* ---------- closing ---------- */
 
+/* ---------- pricing ---------- */
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 2.75rem;
+  align-items: stretch;
+}
+@media (max-width: 940px) { .plans { grid-template-columns: minmax(0, 1fr); max-width: 480px; } }
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-lift);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1.75rem 1.6rem;
+}
+.plan--mid { border-color: var(--bronze); box-shadow: 0 14px 34px rgba(122, 92, 16, 0.12); }
+.plan--top { border-color: var(--navy); background: var(--paper); }
+
+.plan-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin-bottom: 0.9rem;
+}
+.plan-name { font-family: var(--display); font-size: 1.5rem; margin-bottom: 0.35rem; }
+.plan-for { font-size: 0.92rem; color: var(--slate); margin-bottom: 1.25rem; min-height: 2.7em; }
+
+.plan-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 0.3rem; }
+.plan-price .amount { font-family: var(--display); font-size: 2.4rem; line-height: 1; color: var(--navy); font-variant-numeric: tabular-nums; }
+.plan-price .period { font-family: var(--mono); font-size: 12.5px; color: var(--slate-soft); }
+.plan-meter { font-family: var(--mono); font-size: 12.5px; color: var(--slate); margin-bottom: 1.5rem; }
+
+.plan-features { list-style: none; margin: 0 0 1.75rem; padding: 0; display: grid; gap: 0.65rem; flex: 1; }
+.plan-features li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 0.6rem; font-size: 0.93rem; color: var(--slate); line-height: 1.5; }
+.plan-features li::before { content: "\2713"; font-family: var(--mono); font-size: 12px; color: var(--pass); }
+.plan-features li.is-cap::before { content: "\2013"; color: var(--slate-soft); }
+.plan-features li b { color: var(--navy); font-weight: 500; }
+
+.plan .btn { width: 100%; justify-content: center; }
+
+.plan-enterprise {
+  margin-top: 1.75rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px dashed var(--rule);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  background: var(--paper-sink);
+}
+.plan-enterprise p { margin: 0; font-size: 0.95rem; color: var(--slate); }
+.plan-enterprise p b { color: var(--navy); }
+.plan-enterprise .btn { flex: none; }
+
+.plan-note { margin-top: 1.5rem; font-size: 0.86rem; color: var(--slate-soft); max-width: 70ch; }
+
 .close-band {
   padding: clamp(3.5rem, 8vw, 6rem) var(--pad);
   border-top: 1px solid var(--rule);
@@ -568,6 +633,7 @@ footer {
     <a href="#how">How it works</a>
     <a href="#split">What's automated</a>
     <a href="#coverage">Coverage</a>
+    <a href="#pricing">Pricing</a>
     <span class="nav-auth">
       <!-- Branded entrance, which then hands off to lyceumgroup.myassembly.com.
            To send clients straight to the portal instead, swap this href for
@@ -851,6 +917,87 @@ footer {
              the seal are a licensed engineer's, and they always will be.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= PRICING ================= -->
+  <section class="band" id="pricing">
+    <div class="inner">
+      <p class="eyebrow">Pricing</p>
+      <h2>Priced by the draft,<br />not by the seat.</h2>
+      <p class="lede" style="margin-top:1.25rem;">
+        Build your library and run every eligibility check for free. Pay only once a
+        solicitation is worth turning into a draft.
+      </p>
+
+      <div class="plans">
+
+        <!-- Starter — free. The deterministic layers (library, gate, matching) cost us
+             nothing in AI spend, so this tier is a real funnel, not a loss leader. -->
+        <article class="plan">
+          <p class="plan-tag">Starter</p>
+          <h3 class="plan-name">Build your library.</h3>
+          <p class="plan-for">For a firm finding out whether this is worth paying for.</p>
+          <div class="plan-price"><span class="amount">$0</span><span class="period">/ month</span></div>
+          <p class="plan-meter">No card required</p>
+          <ul class="plan-features">
+            <li>Full firm profile &mdash; staff bios, precertifications, past performance, certification language</li>
+            <li><b>Unlimited</b> go/no-go eligibility checks, every category</li>
+            <li>Team-to-scope matching against your own qualifications</li>
+            <li>1 user</li>
+            <li class="is-cap">No drafts generated</li>
+          </ul>
+          <a class="btn btn--ghost" href="signin.html">Create a free account</a>
+        </article>
+
+        <!-- Growth — the prove-it tier. Named for what the user actually described:
+             a small, cheap-to-try commitment before a firm trusts the top tier. -->
+        <article class="plan plan--mid">
+          <p class="plan-tag">Growth &middot; Prove it first</p>
+          <h3 class="plan-name">See if you win one.</h3>
+          <p class="plan-for">For a single pursuit worth finding out about fast.</p>
+          <div class="plan-price"><span class="amount">$999</span><span class="period">/ month</span></div>
+          <p class="plan-meter">2 draft packages a month &middot; 1 user</p>
+          <ul class="plan-features">
+            <li>Everything in Starter</li>
+            <li><b>2 drafts / month</b> &mdash; library assembled, narrative written, ready for your PM</li>
+            <li>1 user, 1 firm</li>
+            <li>Standard turnaround</li>
+          </ul>
+          <a class="btn btn--primary" href="#start">Talk to us about Growth</a>
+        </article>
+
+        <!-- Professional — reserved as its own name precisely so "Enterprise" stays
+             free for the contact-sales strip below, not this card. -->
+        <article class="plan plan--top">
+          <p class="plan-tag">Professional</p>
+          <h3 class="plan-name">Run your pipeline.</h3>
+          <p class="plan-for">For a firm pursuing several solicitations at once.</p>
+          <div class="plan-price"><span class="amount">$2,497</span><span class="period">/ month</span></div>
+          <p class="plan-meter">5 draft packages a month &middot; 3 users</p>
+          <ul class="plan-features">
+            <li>Everything in Growth</li>
+            <li><b>5 drafts / month</b></li>
+            <li>3 users on one firm account</li>
+            <li>Priority turnaround</li>
+            <li>A direct line to your Lyceum team</li>
+          </ul>
+          <a class="btn btn--primary" href="#start">Talk to us about Professional</a>
+        </article>
+      </div>
+
+      <div class="plan-enterprise">
+        <p>Need more users, or more drafts a month? <b>Enterprise</b> is scoped to your pipeline.</p>
+        <!-- TODO(lyceum): replace with the real address from your domain -->
+        <a class="btn btn--ghost" href="mailto:hello@lyceumgroup.com">Contact sales</a>
+      </div>
+
+      <p class="plan-note">
+        Billed monthly. A draft is one complete proposal package for one solicitation &mdash;
+        library assembly plus a written, page-budgeted narrative &mdash; not a page count or a
+        revision. Paid tiers are arranged directly with our team; there is no self-serve
+        checkout on this page yet.
+      </p>
     </div>
   </section>
 
