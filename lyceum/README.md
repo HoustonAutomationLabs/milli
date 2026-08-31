@@ -84,3 +84,31 @@ The Go/No-Go panel in the hero runs the synthetic `Demo Engineering LLC` payload
 requirement. No real firm, engineer, PE license number or personnel record number
 appears anywhere in this file, per the standing guardrail. Keep it that way: this page
 is public-facing.
+
+## Deploying
+
+A Netlify project named **lyceumgroup** already exists on the Houston Automation Labs
+team (`lyceumgroup.netlify.app`, site id `70323063-3662-45d3-b722-dbed33fa1967`). It is
+empty — this session could not upload to it, because the sandbox's network policy blocks
+egress to `api.netlify.com` and `netlify.app`. The Netlify management API reaches Claude
+through a different route, which is why the project could be created but not filled.
+
+Two ways to finish it, both about a minute:
+
+**Drag and drop.** Open <https://app.netlify.com/projects/lyceumgroup/deploys> and drop
+the `lyceum-site.zip` (or this folder) onto the deploy area. Done, no CLI.
+
+**Link the repo — better, because pushes then redeploy on their own.** In the project's
+Build & deploy settings:
+
+- Repository: `HoustonAutomationLabs/milli`
+- **Base directory: `lyceum`**
+- **Publish directory: `lyceum`**
+- Build command: leave empty
+
+The base directory matters. Without it Netlify reads the repo-root `netlify.toml`, which
+builds the foster-care dashboard — a completely different application. With it, Netlify
+reads `lyceum/netlify.toml` and publishes these three static files and nothing else.
+
+Nothing here reads data at build or at runtime, so no environment variables are needed
+and none should be set.
