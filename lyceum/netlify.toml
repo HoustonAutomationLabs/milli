@@ -1,0 +1,14 @@
+# Deploy config for the Lyceum Group site only.
+#
+# This file exists so the site can be deployed from this repo without the
+# root netlify.toml — which builds the foster-care Next app — applying to
+# it. In the Netlify project settings set BOTH the base directory and the
+# publish directory to "lyceum"; Netlify then reads this file instead of
+# the one at the repo root.
+#
+# Static HTML. No build step, no framework, no environment variables, and
+# no data of any kind is read at deploy time.
+
+[build]
+  publish = "."
+  command = ""

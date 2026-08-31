@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Lyceum Group</title>
+<meta name="description" content="Proposal automation for engineering firms. See what you qualify for, then win more of it." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" />
+<style>
+/* ------------------------------------------------------------------
+   The Lyceum Group — home page
+   Single file, no build step. Light gold/beige ground with navy type,
+   sized and weighted for comfortable reading. Committed to one visual
+   world by design; every color is painted explicitly.
+
+   Contrast, measured (WCAG AA needs 4.5:1 body, 3:1 large):
+     navy   #13182F on beige #F4EDDC .... 13.45:1
+     slate  #3B4A63 on beige ............. 7.67:1
+     slate  #55637B on beige ............. 5.21:1
+     bronze #7A5C10 on beige ............. 5.35:1
+     green  #1D6347 on panel #FCF8ED ..... 6.76:1
+     rust   #9A3618 on panel ............. 6.79:1
+     beige on navy button ............... 13.45:1
+     navy on gold button ................. 9.66:1
+   Every text pair on the page clears AA. Nothing here is decorative-only
+   color: state is carried by the check mark and the word beside it too.
+   ------------------------------------------------------------------ */
+
+:root {
+  --paper:      #F4EDDC;
+  --paper-lift: #FCF8ED;
+  --paper-sink: #EDE3CC;
+  --navy:       #13182F;
+  --navy-deep:  #0A0E1D;
+  --slate:      #3B4A63;
+  --slate-soft: #55637B;
+  --bronze:     #7A5C10;
+  --gold:       #BE9526;
+  --gold-lit:   #E4C979;
+  --pass:       #1D6347;
+  --gap:        #9A3618;
+  --rule:       rgba(19, 24, 47, 0.20);
+  --rule-soft:  rgba(19, 24, 47, 0.11);
+  --rule-gold:  rgba(122, 92, 16, 0.30);
+
+  --display: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --body:    "IBM Plex Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --pad: clamp(1.25rem, 5vw, 5rem);
+  --measure: 64ch;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--navy);
+  font-family: var(--body);
+  font-weight: 400;
+  font-size: 17.5px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+}
+img, svg { max-width: 100%; }
+a { color: inherit; }
+:focus-visible {
+  outline: 3px solid var(--navy);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ---------- shared primitives ---------- */
+
+.band { padding: clamp(3rem, 7vw, 6rem) var(--pad); border-top: 1px solid var(--rule); }
+.band--quiet { border-top: 1px solid var(--rule-soft); background: var(--paper-sink); }
+.inner { max-width: 1180px; margin: 0 auto; }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin: 0 0 1.5rem;
+}
+.eyebrow--dim { color: var(--slate); }
+
+h1, h2, h3 { font-family: var(--display); font-weight: 400; text-wrap: balance; margin: 0; color: var(--navy); }
+h1 { font-size: clamp(2.6rem, 6.2vw, 4.25rem); line-height: 1.04; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.95rem, 3.6vw, 2.8rem); line-height: 1.12; letter-spacing: -0.012em; }
+h3 { font-size: 1.3rem; line-height: 1.3; }
+h1 em, h2 em { font-style: italic; color: var(--bronze); }
+
+p { margin: 0; max-width: var(--measure); }
+.lede { font-size: clamp(1.08rem, 1.5vw, 1.2rem); color: var(--slate); line-height: 1.75; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 1.75rem;
+  font-family: var(--body);
+  font-size: 1.02rem;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  border-radius: 3px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.btn--primary {
+  background: var(--navy);
+  color: var(--paper);
+  border-color: var(--navy);
+}
+.btn--primary:hover { background: var(--navy-deep); border-color: var(--navy-deep); }
+.btn--ghost { border-color: var(--rule); color: var(--navy); background: transparent; }
+.btn--ghost:hover { border-color: var(--navy); background: rgba(19, 24, 47, 0.05); }
+
+.chip {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--slate);
+  background: var(--paper-lift);
+  white-space: nowrap;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.85rem var(--pad);
+  background: rgba(244, 237, 220, 0.94);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+.brand { display: flex; align-items: center; gap: 0.8rem; text-decoration: none; }
+/* The mark sits on a navy plate on purpose: a gold logo on a beige ground
+   has almost no contrast. Drop the transparent PNG straight in here and it
+   keeps its punch — see lyceum/README.md. */
+.brand-plate {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  background: var(--navy);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+}
+.brand-mark { width: 100%; height: 100%; display: block; }
+.brand-name {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  color: var(--navy);
+}
+.brand-name span { color: var(--bronze); }
+.brand-tag {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--slate-soft);
+  margin-top: 3px;
+}
+.nav { display: flex; align-items: center; gap: 1.75rem; }
+.nav a:not(.btn) {
+  font-size: 0.98rem;
+  color: var(--slate);
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+.nav a:not(.btn):hover { color: var(--navy); text-decoration: underline; text-underline-offset: 4px; }
+.nav .btn { padding: 0.65rem 1.2rem; font-size: 0.95rem; }
+.nav-auth { display: flex; align-items: center; gap: 0.6rem; }
+@media (max-width: 900px) { .nav a:not(.btn) { display: none; } }
+
+/* ---------- hero ---------- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(3.5rem, 8vw, 6.5rem) var(--pad) clamp(3rem, 6vw, 5rem);
+  background: linear-gradient(180deg, #FAF4E5 0%, var(--paper) 62%);
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -55%;
+  width: 150vw;
+  height: 120vh;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(190, 149, 38, 0.16), rgba(190, 149, 38, 0) 72%);
+  pointer-events: none;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -78vw;
+  width: 190vw;
+  height: 190vw;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border-top: 1px solid var(--rule-gold);
+  background: radial-gradient(closest-side at 50% 0%, rgba(190, 149, 38, 0.10), rgba(190, 149, 38, 0) 60%);
+  pointer-events: none;
+}
+.hero-grid {
+  position: relative;
+  z-index: 1;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(2.5rem, 5vw, 4.5rem);
+  align-items: center;
+}
+@media (max-width: 940px) { .hero-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.hero h1 { margin-bottom: 1.35rem; }
+.hero .lede { margin-bottom: 2rem; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+.hero-note {
+  margin-top: 1.7rem;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: var(--slate-soft);
+}
+
+/* ---------- go / no-go panel ---------- */
+
+.gate {
+  background: var(--paper-lift);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: 0 18px 44px rgba(19, 24, 47, 0.13);
+  overflow: hidden;
+}
+.gate-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--navy);
+}
+.gate-title {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-lit);
+}
+.gate-sub { font-family: var(--mono); font-size: 12px; color: rgba(244, 237, 220, 0.78); }
+.gate-body { padding: 1.2rem 1.15rem; }
+
+.gate-req {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 1.05rem;
+  margin-bottom: 0.95rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.gate-req-label {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--slate-soft);
+  width: 100%;
+  margin-bottom: 4px;
+}
+.cat {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  color: var(--slate-soft);
+  transition: color 260ms ease, border-color 260ms ease, background 260ms ease;
+}
+.cat.is-covered { color: var(--pass); border-color: rgba(29, 99, 71, 0.45); background: rgba(29, 99, 71, 0.09); }
+.cat.is-gap { color: var(--gap); border-color: rgba(154, 54, 24, 0.5); background: rgba(154, 54, 24, 0.09); }
+
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.checks li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.48rem 0;
+  font-size: 0.99rem;
+  color: var(--slate-soft);
+  transition: color 260ms ease;
+}
+.checks li.is-done { color: var(--navy); }
+.check-mark {
+  font-family: var(--mono);
+  font-size: 15px;
+  text-align: center;
+  color: rgba(19, 24, 47, 0.22);
+  transition: color 260ms ease;
+}
+.checks li.is-pass .check-mark { color: var(--pass); }
+.checks li.is-fail .check-mark { color: var(--gap); }
+.check-state {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--slate-soft);
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+.checks li.is-done .check-state { opacity: 1; }
+.checks li.is-fail .check-state { color: var(--gap); }
+
+.gate-foot {
+  margin-top: 1.15rem;
+  padding-top: 1.05rem;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.verdict { display: flex; align-items: baseline; gap: 0.75rem; opacity: 0; transition: opacity 300ms ease; }
+.verdict.is-shown { opacity: 1; }
+.verdict-word {
+  font-family: var(--display);
+  font-size: 1.75rem;
+  line-height: 1;
+  color: var(--gap);
+  letter-spacing: -0.01em;
+}
+.verdict-count { font-family: var(--mono); font-size: 12.5px; color: var(--slate); letter-spacing: 0.05em; }
+.gate-replay {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--slate);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.gate-replay:hover { color: var(--navy); border-color: var(--navy); background: rgba(19, 24, 47, 0.05); }
+.gate-gapline {
+  margin-top: 0.9rem;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--slate);
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.gate-gapline.is-shown { opacity: 1; }
+.gate-gapline b { color: var(--gap); font-weight: 500; }
+
+/* ---------- facts strip ---------- */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-lift);
+}
+.fact { padding: 1.75rem var(--pad); border-right: 1px solid var(--rule-soft); }
+.fact:last-child { border-right: none; }
+.fact-num {
+  font-family: var(--display);
+  font-size: 2.3rem;
+  line-height: 1;
+  color: var(--navy);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 0.5rem;
+}
+.fact-num small { font-size: 1rem; color: var(--bronze); font-family: var(--mono); font-weight: 500; letter-spacing: 0.03em; }
+.fact-label { font-size: 0.95rem; color: var(--slate); line-height: 1.55; max-width: 27ch; }
+
+/* ---------- two questions ---------- */
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--rule-soft);
+  border: 1px solid var(--rule-soft);
+  margin-top: 2.5rem;
+}
+.pair-cell { background: var(--paper-lift); padding: clamp(1.5rem, 3vw, 2.35rem); }
+.pair-cell h3 { font-size: 1.7rem; margin-bottom: 0.8rem; color: var(--bronze); font-style: italic; }
+.pair-cell p { font-size: 1.02rem; color: var(--slate); }
+
+/* ---------- process ---------- */
+
+.steps { display: grid; gap: 1px; background: var(--rule-soft); margin-top: 2.75rem; border-top: 1px solid var(--rule-soft); border-bottom: 1px solid var(--rule-soft); }
+.step {
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: clamp(1rem, 3vw, 2.5rem);
+  padding: 1.6rem 0;
+  align-items: baseline;
+}
+@media (max-width: 800px) { .step { grid-template-columns: 3.2rem minmax(0, 1fr); } }
+.step-num { font-family: var(--mono); font-size: 13.5px; font-weight: 500; color: var(--bronze); letter-spacing: 0.06em; }
+.step-title { font-family: var(--display); font-size: 1.5rem; line-height: 1.25; color: var(--navy); }
+.step-kind {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin-top: 0.55rem;
+  color: var(--slate-soft);
+}
+.step-kind.det { color: var(--pass); }
+.step-kind.gen { color: var(--bronze); }
+.step p { font-size: 1.01rem; color: var(--slate); }
+@media (max-width: 800px) { .step p { grid-column: 2; } }
+
+/* ---------- layer split ---------- */
+
+.layers { margin-top: 2.75rem; display: grid; gap: 1.5rem; }
+.layer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: clamp(1rem, 3vw, 2.5rem);
+  align-items: start;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+@media (max-width: 800px) { .layer { grid-template-columns: minmax(0, 1fr); gap: 0.7rem; } }
+.layer-head { display: flex; align-items: baseline; gap: 0.85rem; flex-wrap: wrap; }
+.layer-name { font-family: var(--display); font-size: 1.45rem; color: var(--navy); }
+.layer-share { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--bronze); letter-spacing: 0.05em; }
+.layer-bar { height: 5px; background: rgba(19, 24, 47, 0.10); margin-top: 0.9rem; border-radius: 3px; overflow: hidden; }
+.layer-bar i { display: block; height: 100%; background: var(--bronze); }
+.layer-bar.is-none i { background: var(--pass); }
+.layer p { font-size: 1.01rem; color: var(--slate); }
+
+/* ---------- coverage ---------- */
+
+.coverage { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 2.25rem 2.5rem; margin-top: 2.5rem; }
+.cov h3 { font-size: 1.3rem; margin-bottom: 0.65rem; }
+.cov p { font-size: 1rem; color: var(--slate); }
+.cov-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 1rem; }
+.cov--next h3 { color: var(--bronze); font-style: italic; }
+
+/* ---------- practice ---------- */
+
+.practice { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; background: var(--rule-soft); border: 1px solid var(--rule-soft); margin-top: 2.5rem; }
+.practice > div { background: var(--paper-lift); padding: 1.7rem 1.5rem; }
+.practice h3 { font-size: 1.22rem; margin-bottom: 0.55rem; }
+.practice p { font-size: 0.99rem; color: var(--slate); }
+
+/* ---------- closing ---------- */
+
+.close-band {
+  padding: clamp(3.5rem, 8vw, 6rem) var(--pad);
+  border-top: 1px solid var(--rule);
+  background: var(--navy);
+  text-align: center;
+}
+.close-band .eyebrow { color: var(--gold-lit); }
+.close-band h2 { color: var(--paper); margin-bottom: 1.1rem; }
+.close-band h2 em { color: var(--gold-lit); }
+.close-band p { margin: 0 auto 2.25rem; text-align: center; color: rgba(244, 237, 220, 0.86); }
+.close-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 0.85rem; }
+.close-band .btn--primary { background: var(--gold-lit); border-color: var(--gold-lit); color: var(--navy-deep); }
+.close-band .btn--primary:hover { background: #F0DDA2; border-color: #F0DDA2; }
+.close-band .btn--ghost { color: var(--paper); border-color: rgba(244, 237, 220, 0.45); }
+.close-band .btn--ghost:hover { border-color: var(--paper); background: rgba(244, 237, 220, 0.12); }
+.close-band :focus-visible { outline-color: var(--gold-lit); }
+
+footer {
+  padding: 1.9rem var(--pad) 2.5rem;
+  border-top: 1px solid var(--rule);
+  background: var(--paper-sink);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--slate);
+}
+.footer-links { display: flex; gap: 1.5rem; list-style: none; margin: 0; padding: 0; }
+.footer-links a { text-decoration: none; }
+.footer-links a:hover { color: var(--navy); text-decoration: underline; text-underline-offset: 4px; }
+.footer-mark { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate-soft); }
+
+/* ---------- motion ---------- */
+
+.rise { opacity: 0; transform: translateY(14px); animation: rise 700ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.d1 { animation-delay: 80ms; }
+.d2 { animation-delay: 180ms; }
+.d3 { animation-delay: 280ms; }
+.d4 { animation-delay: 380ms; }
+@keyframes rise { to { opacity: 1; transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; opacity: 1; transform: none; }
+  * { transition-duration: 1ms !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <a class="brand" href="#top">
+    <span class="brand-plate">
+      <svg class="brand-mark" viewBox="0 0 64 64" role="img" aria-label="The Lyceum Group">
+        <circle cx="32" cy="32" r="30" fill="none" stroke="#E4C979" stroke-width="1.6" />
+        <circle cx="32" cy="32" r="26" fill="none" stroke="#BE9526" stroke-width="0.9" />
+        <path d="M22 22h20" stroke="#E4C979" stroke-width="2.2" stroke-linecap="square" />
+        <path d="M25 22c0-3 2-5 4-5M39 22c0-3-2-5-4-5" fill="none" stroke="#E4C979" stroke-width="1.5" />
+        <path d="M26 24v16M32 24v16M38 24v16" stroke="#E4C979" stroke-width="1.5" />
+        <path d="M21 42h22v3H21z" fill="#E4C979" />
+        <path d="M32 45v5M26 50h12" stroke="#BE9526" stroke-width="1.3" />
+        <rect x="44" y="12" width="7" height="7" fill="none" stroke="#E4C979" stroke-width="1.3" />
+        <path d="M47.5 19v4M44 15.5h-4" stroke="#E4C979" stroke-width="1.1" />
+      </svg>
+    </span>
+    <span class="brand-name">The Lyceum <span>Group</span>
+      <span class="brand-tag">Automating the routine</span>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="#questions">Why it works</a>
+    <a href="#how">How it works</a>
+    <a href="#split">What's automated</a>
+    <a href="#coverage">Coverage</a>
+    <span class="nav-auth">
+      <!-- Branded entrance, which then hands off to lyceumgroup.myassembly.com.
+           To send clients straight to the portal instead, swap this href for
+           https://lyceumgroup.myassembly.com — one edit, no other change. -->
+      <a class="btn btn--ghost" href="signin.html">Log in</a>
+      <a class="btn btn--primary" href="#start">Get started</a>
+    </span>
+  </nav>
+</header>
+
+<main id="top">
+
+  <!-- ================= HERO ================= -->
+  <section class="hero">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow rise">Proposal automation &middot; Engineering &amp; government contracts</p>
+        <h1 class="rise d1">See what you qualify for. <em>Then win more of it.</em></h1>
+        <p class="lede rise d2">
+          We turn a solicitation into a submission-ready draft: eligibility checked against
+          your team's actual qualifications, staff matched to scope, narrative written to the
+          agency's page budget. Your project manager reviews, seals and submits. That part
+          stays yours.
+        </p>
+        <div class="hero-actions rise d3">
+          <!-- TODO(lyceum): replace both hrefs with your real intake links -->
+          <a class="btn btn--primary" href="#start">Bring us a solicitation</a>
+          <a class="btn btn--ghost" href="#how">See how a draft gets built &rarr;</a>
+        </div>
+        <p class="hero-note rise d4">Texas transportation today &middot; built for any solicitation that states its requirements</p>
+      </div>
+
+      <!-- Live go/no-go panel. Synthetic firm — never real client data. -->
+      <div class="gate rise d2" id="gate">
+        <div class="gate-head">
+          <span class="gate-title">Go / No-Go</span>
+          <span class="gate-sub">Demo Engineering LLC &middot; sample</span>
+        </div>
+        <div class="gate-body">
+          <div class="gate-req">
+            <span class="gate-req-label">Categories the solicitation requires</span>
+            <span class="cat" data-cat="7.1.1">7.1.1</span>
+            <span class="cat" data-cat="7.3.1">7.3.1</span>
+            <span class="cat" data-cat="8.1.1">8.1.1</span>
+            <span class="cat" data-cat="8.3.1">8.3.1</span>
+            <span class="cat" data-cat="8.5.1">8.5.1</span>
+          </div>
+
+          <ul class="checks" id="checks">
+            <li data-pass="1"><span class="check-mark">&#10003;</span><span>Firm precertification active</span><span class="check-state">Pass</span></li>
+            <li data-pass="0"><span class="check-mark">&#10007;</span><span>Team covers every required category</span><span class="check-state">Gap</span></li>
+            <li data-pass="1"><span class="check-mark">&#10003;</span><span>PM holds an active Texas PE license</span><span class="check-state">Pass</span></li>
+            <li data-pass="0"><span class="check-mark">&#10007;</span><span>Meets prime self-performance minimum</span><span class="check-state">Short</span></li>
+            <li data-pass="1"><span class="check-mark">&#10003;</span><span>Meets the DBE / HUB goal</span><span class="check-state">Pass</span></li>
+            <li data-pass="1"><span class="check-mark">&#10003;</span><span>No preclusion conflict</span><span class="check-state">Pass</span></li>
+            <li data-pass="1"><span class="check-mark">&#10003;</span><span>Submittal deadline still open</span><span class="check-state">Pass</span></li>
+          </ul>
+
+          <div class="gate-foot">
+            <div class="verdict" id="verdict">
+              <span class="verdict-word">NO-GO</span>
+              <span class="verdict-count">5 of 7 checks</span>
+            </div>
+            <button class="gate-replay" id="replay" type="button">Run again</button>
+          </div>
+          <p class="gate-gapline" id="gapline">
+            Uncovered: <b>8.5.1</b> &middot; self-performance planned 45%, required 55%.<br />
+            Add the category, team up, or pass &mdash; decided in seconds, not after a week of writing.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FACTS ================= -->
+  <section class="facts">
+    <div class="fact">
+      <div class="fact-num">5&ndash;10<small> / wk</small></div>
+      <p class="fact-label">Responses we already support by hand, across seven engineering firms</p>
+    </div>
+    <div class="fact">
+      <div class="fact-num">70&ndash;80<small>%</small></div>
+      <p class="fact-label">Of a typical response is content your firm already owns, not new writing</p>
+    </div>
+    <div class="fact">
+      <div class="fact-num">7<small> checks</small></div>
+      <p class="fact-label">Run before you commit a proposal team to a single hour</p>
+    </div>
+    <div class="fact">
+      <div class="fact-num">0<small> AI</small></div>
+      <p class="fact-label">In the eligibility decision. Qualification is arithmetic, and we keep it that way</p>
+    </div>
+  </section>
+
+  <!-- ================= TWO QUESTIONS ================= -->
+  <section class="band band--quiet" id="questions">
+    <div class="inner">
+      <p class="eyebrow">Two questions, every pursuit</p>
+      <h2>Most firms answer both<br />with a gut call and a calendar.</h2>
+      <div class="pair">
+        <div class="pair-cell">
+          <h3>Can we win it?</h3>
+          <p>
+            Qualification is set membership, not judgment. Your team either holds the categories
+            a solicitation requires, or it does not &mdash; and the ones it is missing can be
+            named by code. We answer that first, in seconds, so a pursuit that was never winnable
+            never reaches your proposal team.
+          </p>
+        </div>
+        <div class="pair-cell">
+          <h3>Can we handle it?</h3>
+          <p>
+            Capacity is the second question, and today it silently answers the first: firms bid
+            what they had time to read. When the check is instant, every solicitation gets
+            screened &mdash; not just the ones that arrived on a slow week. You see the whole
+            field and choose where the hours go.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HOW ================= -->
+  <section class="band" id="how">
+    <div class="inner">
+      <p class="eyebrow">How it works</p>
+      <h2>From solicitation<br />to <em>first full draft</em>.</h2>
+      <p class="lede" style="margin-top:1.25rem;">
+        Five stages, in order. The first three are deterministic &mdash; the same input gives the
+        same answer every time. Only the fourth writes prose, and nothing is ever submitted
+        without your review.
+      </p>
+
+      <ol class="steps">
+        <li class="step">
+          <span class="step-num">01</span>
+          <div><span class="step-title">Solicitation in</span><span class="step-kind">Managed by Lyceum</span></div>
+          <p>Send the RFP, RFQ or letter-of-interest request. We read out the required categories,
+             page limit, DBE/HUB goal, self-performance minimum, evaluation weights and the
+             submittal deadline. Nobody on your staff learns new software.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">02</span>
+          <div><span class="step-title">Go / no-go gate</span><span class="step-kind det">Deterministic &middot; never AI</span></div>
+          <p>Seven checks, pass or fail, each with its reason. Eligibility is arithmetic and set
+             membership &mdash; a language model here would only add a chance of being wrong about
+             something verifiable.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">03</span>
+          <div><span class="step-title">Team matched to scope</span><span class="step-kind det">Deterministic</span></div>
+          <p>Approved categories are matched as sets, evaluated as of the submittal deadline
+             rather than today. A certification that lapses before you submit is a gap, and it is
+             named as one. A denied category surfaces as a risk instead of a silent hole.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">04</span>
+          <div><span class="step-title">Library assembled</span><span class="step-kind det">Deterministic</span></div>
+          <p>Bios, precertification appendices, past performance, QA/QC language, certification
+             statements, the organization and time-commitment tables. Most of a response already
+             exists inside your firm &mdash; it gets assembled, not rewritten.</p>
+        </li>
+        <li class="step">
+          <span class="step-num">05</span>
+          <div><span class="step-title">Narrative drafted</span><span class="step-kind gen">Generated &middot; then reviewed</span></div>
+          <p>Project understanding, tailored approach, why this team &mdash; written against the
+             agency's scoring weights and page budget. It arrives as a draft for your PM. You
+             edit, seal, sign and submit.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ================= SPLIT ================= -->
+  <section class="band" id="split">
+    <div class="inner">
+      <p class="eyebrow">What's automated, and what never will be</p>
+      <h2>The line runs through<br />the middle of the document.</h2>
+      <p class="lede" style="margin-top:1.25rem;">
+        We measured it against two real submissions &mdash; a TxDOT district letter of interest and
+        a long-form MPO corridor-study RFQ. The proportions held.
+      </p>
+
+      <div class="layers">
+        <div class="layer">
+          <div>
+            <div class="layer-head">
+              <span class="layer-name">Your library</span>
+              <span class="layer-share">70&ndash;80% of the page count</span>
+            </div>
+            <div class="layer-bar"><i style="width:75%"></i></div>
+          </div>
+          <p>Looked up and assembled, word for word, from material your firm already owns and has
+             already had approved. No invention, nothing to fact-check.</p>
+        </div>
+        <div class="layer">
+          <div>
+            <div class="layer-head">
+              <span class="layer-name">The gate</span>
+              <span class="layer-share">Pass / fail &middot; no prose</span>
+            </div>
+            <div class="layer-bar is-none"><i style="width:100%"></i></div>
+          </div>
+          <p>Pure arithmetic. Categories compared as sets, so <span class="chip">8.2.1</span> can
+             never be satisfied by <span class="chip">18.2.1</span> &mdash; the kind of near-miss
+             that costs a submission and is invisible on the page.</p>
+        </div>
+        <div class="layer" style="border-bottom:none;">
+          <div>
+            <div class="layer-head">
+              <span class="layer-name">The narrative</span>
+              <span class="layer-share">20&ndash;30% of the page count</span>
+            </div>
+            <div class="layer-bar"><i style="width:25%"></i></div>
+          </div>
+          <p>Drafted, constrained to the page budget, and handed to a human who knows the project.
+             This is the only part a model writes, and the only part that always gets read before
+             it goes out.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= COVERAGE ================= -->
+  <section class="band" id="coverage">
+    <div class="inner">
+      <p class="eyebrow">Coverage</p>
+      <h2>Built on the agency's<br />own taxonomy.</h2>
+
+      <div class="coverage">
+        <div class="cov">
+          <h3>TxDOT district &amp; PEPS</h3>
+          <p>Short constrained narratives &mdash; nine pages including the PM resume &mdash; scored
+             on weighted topics and followed by an interview. Page budgets are derived from the
+             evaluation weights, not guessed.</p>
+          <div class="cov-chips">
+            <span class="chip">7.1.1 Traffic engineering studies</span>
+            <span class="chip">8.3.1 Signalization</span>
+            <span class="chip">+ 33 more categories</span>
+          </div>
+        </div>
+        <div class="cov">
+          <h3>Regional MPOs</h3>
+          <p>Long-form RFQs with a fixed table of contents, staff time-commitment tables, task-area
+             org charts and per-person resume blocks. Tyler, H-GAC, NCTCOG and their peers.</p>
+          <div class="cov-chips">
+            <span class="chip">Cover letter &rarr; Appendix B</span>
+            <span class="chip">Org &amp; commitment tables</span>
+          </div>
+        </div>
+        <div class="cov cov--next">
+          <h3>Where this goes next</h3>
+          <p>Nothing in the machinery is specific to highways. Any solicitation that states its
+             requirements up front &mdash; municipal, state, federal &mdash; can be gated, matched
+             and drafted the same way. Transportation is simply where we know the vocabulary
+             cold.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PRACTICE ================= -->
+  <section class="band band--quiet">
+    <div class="inner">
+      <p class="eyebrow eyebrow--dim">How we work</p>
+      <h2>A service, not a seat license.</h2>
+      <div class="practice">
+        <div>
+          <h3>We operate everything</h3>
+          <p>Your firm gets a portal login and finished drafts. There is no tool for your staff to
+             adopt, no integration to maintain, and no new subscription in the stack.</p>
+        </div>
+        <div>
+          <h3>Your library is the asset</h3>
+          <p>Bios, precertifications, past performance and certifications are durable and stay
+             yours. Solicitation formats change constantly; the underlying record does not.</p>
+        </div>
+        <div>
+          <h3>Nothing goes out unread</h3>
+          <p>Every package is a draft until your project manager says otherwise. The signature and
+             the seal are a licensed engineer's, and they always will be.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CLOSE ================= -->
+  <section class="close-band" id="start">
+    <div class="inner">
+      <p class="eyebrow">Start here</p>
+      <h2>Bring us your <em>next</em> solicitation.</h2>
+      <p class="lede">
+        Send one. We return the go/no-go with every gap named by code, and a draft outline built
+        from your own material &mdash; before you commit a proposal team to it.
+      </p>
+      <div class="close-actions">
+        <!-- TODO(lyceum): replace with your Assembly intake form or booking URL -->
+        <a class="btn btn--primary" href="#start">Start a working session</a>
+        <!-- TODO(lyceum): replace with the real address from your domain, not a personal inbox -->
+        <a class="btn btn--ghost" href="mailto:hello@lyceumgroup.com">Email the team &rarr;</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span class="footer-mark">The Lyceum Group &middot; Automating the routine. Maximizing productivity.</span>
+  <ul class="footer-links">
+    <!-- TODO(lyceum): real destinations -->
+    <li><a href="#start">Contact</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#coverage">Coverage</a></li>
+  </ul>
+  <span class="footer-mark">Sample data shown is synthetic</span>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var COVERED = ["7.1.1", "7.3.1", "8.1.1", "8.3.1"];
+  var GAP = "8.5.1";
+
+  var checks = document.getElementById("checks");
+  var verdict = document.getElementById("verdict");
+  var gapline = document.getElementById("gapline");
+  var replay = document.getElementById("replay");
+  var cats = document.querySelectorAll(".cat");
+  var rows = checks ? checks.querySelectorAll("li") : [];
+  var timers = [];
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function clearRun() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    Array.prototype.forEach.call(cats, function (c) {
+      c.classList.remove("is-covered", "is-gap");
+    });
+    Array.prototype.forEach.call(rows, function (r) {
+      r.classList.remove("is-done", "is-pass", "is-fail");
+    });
+    verdict.classList.remove("is-shown");
+    gapline.classList.remove("is-shown");
+  }
+
+  function settle(row) {
+    row.classList.add("is-done");
+    row.classList.add(row.dataset.pass === "1" ? "is-pass" : "is-fail");
+  }
+
+  function finish() {
+    verdict.classList.add("is-shown");
+    gapline.classList.add("is-shown");
+  }
+
+  function run() {
+    clearRun();
+
+    if (reduced) {
+      Array.prototype.forEach.call(cats, function (c) {
+        c.classList.add(c.dataset.cat === GAP ? "is-gap" : "is-covered");
+      });
+      Array.prototype.forEach.call(rows, settle);
+      finish();
+      return;
+    }
+
+    Array.prototype.forEach.call(cats, function (c, i) {
+      timers.push(setTimeout(function () {
+        c.classList.add(COVERED.indexOf(c.dataset.cat) > -1 ? "is-covered" : "is-gap");
+      }, 260 + i * 130));
+    });
+
+    Array.prototype.forEach.call(rows, function (r, i) {
+      timers.push(setTimeout(function () { settle(r); }, 1000 + i * 190));
+    });
+
+    timers.push(setTimeout(finish, 1000 + rows.length * 190 + 120));
+  }
+
+  if (replay) { replay.addEventListener("click", run); }
+
+  // Run once when the panel is actually on screen.
+  if ("IntersectionObserver" in window && checks) {
+    var seen = false;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && !seen) { seen = true; run(); }
+      });
+    }, { threshold: 0.35 });
+    io.observe(document.getElementById("gate"));
+  } else {
+    run();
+  }
+})();
+</script>
+</body>
+</html>
