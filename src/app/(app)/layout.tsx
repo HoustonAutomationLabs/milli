@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/compliance", label: "Compliance", show: can(user, "viewComplianceRegister") },
     { href: "/homes", label: "Homes", show: can(user, "viewHomesRegister") },
     { href: "/training", label: "Training", show: true },
+    { href: "/admin/users", label: "Manage users", show: can(user, "manageUsers") },
   ].filter((n) => n.show);
 
   return (

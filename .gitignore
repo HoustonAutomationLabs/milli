@@ -52,5 +52,9 @@ yarn-error.log*
 *.csv
 !/data/demo/*.xlsx
 
+# Staff roster (email -> role -> team) for the in-app user admin screen.
+# Real staff email addresses have no business in a repo either.
+/data/roster.json
+
 # saved browser session for the exporter — an authenticated credential
 .er-session.json
