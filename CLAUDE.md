@@ -34,7 +34,13 @@ wrong.** This was requested explicitly. Concretely:
 2. **De-identify before sharing anything derived from real exports** —
    `npm run deidentify`. It preserves every statistic and replaces every name.
 3. **Never print client names in chat, commits, PRs, or artifacts.** Use IDs,
-   initials, or aggregates. `npm run inspect:export` masks by default.
+   initials, or aggregates. `npm run inspect:export` masks by default. This is
+   not a demo-only rule — it applies exactly as much to the real production
+   build (2026-09-02: user confirmed agency authorization to proceed with the
+   real system) as to the public Netlify demo. IDs-not-names is a display
+   convention, not the `deidentify` synthetic-name pipeline (rule 2), which is
+   specific to the public demo; this rule stands regardless of which one is
+   in play.
 4. Real exports live in `./data/exports` and are gitignored. So is
    `.er-session.json`, which is an authenticated credential.
 5. **Run `npm run verify:deidentified -- <dir>` before publishing anything.**
@@ -55,6 +61,15 @@ wrong.** This was requested explicitly. Concretely:
 
 ## Project facts established so far
 
+- **2026-09-02: this is now a real, agency-authorized production build**, not
+  just a stakeholder demo. The user confirmed the agency has given permission
+  to proceed and wants the system agency-managed. The Netlify-demo /
+  `deidentify`-pipeline discussion (hard rules 1–2) is specific to that one
+  public demo site and does not need to be re-raised for internal production
+  build decisions — the user asked for this explicitly and it's settled. What
+  does NOT change: hard rule 3 (no raw PHI names in chat/commits/PRs/
+  artifacts) — that's a blanket rule about Claude's own outputs, unrelated to
+  which deployment target is being discussed.
 - **ExtendedReach has no API and no report scheduling** on this plan. Data
   leaves via one-click Excel exports only — no CSV anywhere. See
   `docs/extendedreach-audit.md`, which is the record of the system audit.
