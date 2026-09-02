@@ -195,6 +195,21 @@ wrong numbers" is always visible on the page, never silent.
 
 - Authentication is stubbed. Production needs a real IdP and a HIPAA-eligible
   host — Netlify and Vercel default tiers are neither.
+- **2026-09-02: added `/admin/users`, a CEO-only "Manage Users" screen**,
+  because Google Workspace SSO (once wired up) only proves *identity* — it
+  does not decide who gets a dashboard account or what role/team they see.
+  Backed by `src/lib/roster.ts`: an explicit email -> role -> teamIds ->
+  caseworkerId list, edited from the UI, gated by the existing
+  `manageUsers` permission (CEO only). `resolveRosterUser(email)` is the
+  seam a real SSO callback should call before issuing a session — an email
+  Google can verify but that isn't on this roster must be refused, not
+  defaulted to any role. **Storage is a local JSON file
+  (`./data/roster.json`, gitignored) — explicitly a placeholder.** Cloud
+  Run instances don't share or persist local disk, so this must move to a
+  durable store (a DB row, Firestore) before real production use; it is
+  fine for local/dev use in the meantime. Verified in the browser via
+  Playwright: CEO can add/remove roster entries, and a staff account is
+  redirected away from `/admin/users`.
 - Column mappings verified for nine reports: `pastdue_case`,
   `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`,
   `opencases`, `pastdue_home`, `caseload`, `ontime`. Also now verified,
