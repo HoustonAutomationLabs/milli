@@ -10,8 +10,9 @@ wrong.** This was requested explicitly. Concretely:
 
 - When a decision has a risk the user may not have considered, say so plainly
   once, explain the mechanism, and offer the safer path — do not just comply.
-  This has already mattered twice: the Zoho feed the audit showed was
-  unnecessary, and a plan to put real children's records on a public URL.
+  This has already mattered three times: the Zoho feed the audit showed was
+  unnecessary, a plan to put real children's records on a public URL, and real
+  PHI landing hourly in a personal Gmail Drive folder with no possible BAA.
 - Prefer a direct question over a guess when the answer changes the work.
 - Correct factual misunderstandings even when they are the user's stated
   reason for a decision. "Only I open it on this device" was a genuine
@@ -40,6 +41,17 @@ wrong.** This was requested explicitly. Concretely:
    It checks every column of every file and exits non-zero on any unscrubbed
    name. The de-identifier's own report cannot catch this class of mistake —
    it counts what it replaced, not what it never looked at.
+6. **A personal `@gmail.com` account cannot hold real PHI compliantly.**
+   Google only offers a HIPAA BAA to Google Workspace accounts — a consumer
+   Gmail/Drive account has no BAA option at all, regardless of folder sharing
+   settings, and Drive full-text-indexes file contents so anything with query
+   access to a folder can retrieve real names via search without opening the
+   file. A separate hourly automation (outside this repo) currently writes
+   real ExtendedReach exports into such a personal-account Drive folder — this
+   was flagged to the user 2026-09-02 and they chose to keep it running while
+   handling storage separately. Don't build more on top of that folder as if
+   it were compliant storage; treat every file in it as PHI with no BAA
+   coverage until it moves to a Workspace account (or elsewhere with one).
 
 ## Project facts established so far
 
@@ -138,6 +150,8 @@ npm run dev                                # mock data
 npm run export:er                          # pull reports from ExtendedReach
 npm run inspect:export -- ./data/exports   # reconcile columns; masked output
                                            # reads .xlsx and .csv
+npm run split:workbook -- <combined.xlsx>  # split a Drive-style combined
+                                           # workbook into per-slug files first
 npm run deidentify -- ./real --out ./data/exports   # all files in ONE run
 DATA_SOURCE=exports npm run dev            # real (or de-identified) data
 npm run build && npx tsc --noEmit          # before any push
@@ -166,11 +180,44 @@ wrong numbers" is always visible on the page, never silent.
 
 - Authentication is stubbed. Production needs a real IdP and a HIPAA-eligible
   host — Netlify and Vercel default tiers are neither.
-- Column mappings verified for five reports: `pastdue_case`,
-  `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`.
-  Still unverified — no export seen yet: `opencases`, `pastdue_home`,
-  `inprocess`, `completions`, `caseload`, `ontime`, `openbeds`, `nextcourt`,
+- Column mappings verified for nine reports: `pastdue_case`,
+  `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`,
+  `opencases`, `pastdue_home`, `caseload`, `ontime`. Also now verified,
+  2026-09-02, against a real export pulled from the hourly Drive automation
+  (see the Gmail/BAA note in Hard Rules): `openbeds` — its `worker` column is
+  headed "Home Worker", not "Worker" (added as an alias), and `bedsAvailable`
+  values look like `"1 of 2"` (parses fine as-is: `parseInt` reads the leading
+  number, which is beds *available*, not capacity — the "of N" half is
+  currently discarded). `opencases`'s `removalDate` column came through as the
+  literal text `document.write(removalViewName);` in that export — a broken
+  cell from that automation's pull, not a real header to alias. Still
+  unverified — no export seen yet: `inprocess`, `completions`, `nextcourt`,
   `staffexp`.
+- **`openbeds` is now wired into the dataset** as `CaseworkDataset.homes`, and
+  has its own page at `/homes` (permission `viewHomesRegister`, same
+  ceo/manager-only default as compliance). Deliberately thin: the export also
+  carries the home's address, phone, and an `Active Placements` column naming
+  the children currently there; none of it is modelled or shown — a capacity
+  register doesn't need it, and it's the same minimum-necessary call the rest
+  of this app makes.
+- **The "Foster Homes / Recruitment / Placements / Monthly Data" dashboard the
+  user asked to replicate does not match what ExtendedReach actually exports.**
+  `openbeds` covers home capacity; nothing in the export set covers a
+  recruitment pipeline, a children roster, placement history, or a monthly
+  rollup sheet — those aren't ExtendedReach report views on this plan. Built
+  `/homes` from `openbeds` (real capacity data) rather than fabricating the
+  other tabs against no data source. Ask the vendor, or find whichever system
+  actually tracks recruitment, before building those.
+- **A combined multi-sheet workbook (e.g. from the Drive automation) needs
+  `npm run split:workbook` before `inspect:export`/the loader can read it** —
+  see `scripts/README.md`. Splitting **11** real sheets from a 2026-09-02
+  export matched **11/11** known report slugs cleanly.
+- **Nothing yet moves Drive → the live Netlify dashboard automatically.** The
+  deployed site reads `ER_EXPORT_DIR` from local disk at request time; it has
+  no Google Drive access of its own. "Hourly to Drive" and "updates production"
+  are two different systems today — see `scripts/README.md` for what closing
+  that gap needs (a scheduled job with real Drive API credentials, writing
+  into wherever the deploy reads from).
 - `needapproval_case` **is now wired** — it is the only source of the approver
   (`Submit To`) that tier 2 needs. Deduped against Submitted rows already
   ingested from the task reports, keyed subject + type; the count lands in

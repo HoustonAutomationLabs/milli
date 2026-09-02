@@ -103,6 +103,30 @@ export interface OnTimePoint {
   avgDaysLate: number;
 }
 
+/**
+ * A licensed foster home's current availability, from the "Available Homes —
+ * Open Beds" export. Not case-scoped — a home is not owned by a caseworker's
+ * team the way a case is — so it is read the same way by every role that can
+ * see the register at all.
+ *
+ * The export also carries the home's street address, phone, and an
+ * `Active Placements` column naming the children currently there. None of
+ * that is modelled here: it is not necessary for a capacity-at-a-glance view,
+ * and the "minimum necessary" principle this app follows elsewhere applies
+ * just as much to foster parents' contact details as to a child's.
+ */
+export interface HomeRecord {
+  id: string;
+  /** Non-PHI display identifier safe for broad views. */
+  displayId: string;
+  licenseType: string;
+  bedsAvailable: number | null;
+  ageRange: string;
+  gender: string;
+  /** ISO date of the home's most recent placement, when known. */
+  lastPlacement: string;
+}
+
 /** The full dataset the metrics layer reduces over. */
 export interface CaseworkDataset {
   teams: Team[];
@@ -112,4 +136,6 @@ export interface CaseworkDataset {
   trend: TrendPoint[];
   /** Present when the on-time variance export is available. */
   onTime?: OnTimePoint[];
+  /** Present when the open-beds export is available. */
+  homes?: HomeRecord[];
 }

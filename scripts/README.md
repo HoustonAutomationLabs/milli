@@ -127,6 +127,40 @@ ER_REPORT_URL_TEMPLATE=/reports/view?id={view}
 
 The script then navigates directly by view code. Worth five minutes.
 
+## Alternate source: a combined workbook (e.g. from Google Drive)
+
+A separate scheduled automation, outside this repo, can also produce the
+reports as a single `ExtendedReach_Reports_<timestamp>.xlsx` workbook with one
+sheet per report (sheet name = report slug), landing in a Google Drive folder.
+That shape doesn't match what `exports.ts` expects — one file per slug — so
+split it first:
+
+```bash
+npm run split:workbook -- ./data/exports/ExtendedReach_Reports_2026-09-01_2359.xlsx
+npm run inspect:export -- ./data/exports
+```
+
+**This path is a manual bridge, not a production pipeline.** The deployed
+Netlify site reads `ER_EXPORT_DIR` from local disk at request time (see
+"Deploying the demo" in `../CLAUDE.md`); it has no way to reach Google Drive
+on its own. Getting real data flowing into production automatically needs one
+of:
+
+- a scheduled job (GitHub Action, Netlify scheduled function, etc.) that pulls
+  the latest workbook from Drive with real Google API credentials, splits it,
+  and writes into wherever the deploy reads from, or
+- moving the Drive automation's output to write directly into that location.
+
+Neither exists yet. Until one does, "hourly to Drive" and "updates the live
+dashboard" are two different systems that happen to share a report format.
+
+**PHI note on this path specifically:** a personal Google account
+(`@gmail.com`, not Workspace) has no HIPAA Business Associate Agreement
+available at all — Workspace accounts can get one, personal accounts cannot,
+regardless of folder sharing settings. If the source folder is on a personal
+account, treat every file it holds as PHI sitting somewhere with no BAA
+coverage, and prioritize moving it before building further on top of it.
+
 ## If a report fails
 
 1. Re-run with `--headed --only <slug>` and watch where it stops.
