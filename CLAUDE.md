@@ -23,6 +23,20 @@ wrong.** This was requested explicitly. Concretely:
 - Verify claims rather than asserting them. Every "this is safe" or "this
   works" in this repo should be backed by something that was actually run.
 
+## Document format preferences (2026-09-02, all documents — not milli-specific)
+
+Standing preference for every scope-of-work and proposal document written for
+this user, regardless of project:
+
+- **PDF at the bare minimum.** Not an Excel/spreadsheet file. A PDF is always
+  produced; other formats (e.g. .docx) are extra, never a substitute.
+- **White background, black text, by default.** No color accents, no shaded
+  fills, no palette — plain black-on-white unless the user asks for something
+  else on a specific document.
+- This is a general authoring preference, not something about the milli
+  codebase — it applies to any proposal/SOW written for this user, in any repo
+  or context.
+
 ## Hard rules for this project
 
 **This is children's PHI.** Names, placements, medications, court dates.
