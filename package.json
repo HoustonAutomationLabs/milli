@@ -2,7 +2,7 @@
   "name": "milli",
   "version": "0.1.0",
   "private": true,
-  "description": "Role-based casework dashboard for a Texas foster-care agency, reading from ExtendedReach via Zoho Analytics.",
+  "description": "Role-based casework dashboard for a Texas foster-care agency, reading from ExtendedReach exports.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "inspect:export": "tsx scripts/inspect-export.ts",
     "export:er": "node scripts/export-extendedreach.mjs",
+    "split:workbook": "tsx scripts/split-report-workbook.ts",
     "deidentify": "tsx scripts/deidentify-export.ts",
     "verify:deidentified": "tsx scripts/verify-deidentified.ts"
   },

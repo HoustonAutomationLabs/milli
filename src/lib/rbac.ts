@@ -30,6 +30,7 @@ export const PERMISSIONS = {
     viewAgencyKpis: true,
     viewAllTeams: true,
     viewComplianceRegister: true,
+    viewHomesRegister: true,
     manageUsers: true,
   },
   manager: {
@@ -37,6 +38,7 @@ export const PERMISSIONS = {
     viewAgencyKpis: false,
     viewAllTeams: false,
     viewComplianceRegister: true,
+    viewHomesRegister: true,
     manageUsers: false,
   },
   staff: {
@@ -44,6 +46,7 @@ export const PERMISSIONS = {
     viewAgencyKpis: false,
     viewAllTeams: false,
     viewComplianceRegister: false,
+    viewHomesRegister: false,
     manageUsers: false,
   },
 } as const;

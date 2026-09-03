@@ -5,9 +5,22 @@ import { recordAccess } from "@/lib/audit";
 import { boundWorkerNames, resolveScope } from "@/lib/demo-roles";
 import { getDataset } from "@/lib/zoho/client";
 import { scopeDataset, upcomingItems } from "@/lib/metrics";
+import {
+  distinctYears,
+  filterComplianceByPeriod,
+  monthLabel,
+  monthsInYearFromDates,
+  weekLabel,
+  weeksInMonthFromDates,
+} from "@/lib/period";
 import { Card, ComplianceBadge, KpiCard } from "@/components/ui";
+import { PeriodFilter } from "@/components/period-filter";
 
-export default async function CompliancePage() {
+export default async function CompliancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string; month?: string; week?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
@@ -17,10 +30,19 @@ export default async function CompliancePage() {
     redirect("/dashboard");
   }
 
+  const sp = await searchParams;
   const data = await getDataset();
   const { scope, boundTo } = resolveScope(user, data);
   const scoped = scopeDataset(data, scope);
-  const items = upcomingItems(scoped, 100);
+
+  const periodActive = Boolean(sp.year);
+  // Default view: outstanding obligations only, exactly as before. Once a
+  // period is picked, switch to every dated obligation due in that window
+  // regardless of its current state — the point of looking at a past month
+  // is what was due then, not just what's still overdue today.
+  const items = periodActive
+    ? filterComplianceByPeriod(scoped.compliance, { year: sp.year, month: sp.month, week: sp.week })
+    : upcomingItems(scoped, 100);
   const caseById = new Map(scoped.cases.map((c) => [c.id, c]));
 
   recordAccess({ id: user.id, role: user.role }, "view_compliance", {
@@ -30,6 +52,15 @@ export default async function CompliancePage() {
   const overdue = items.filter((i) => i.state === "overdue").length;
   const dueSoon = items.filter((i) => i.state === "due_soon").length;
 
+  const dueDates = scoped.compliance.filter((i) => i.dueDate && !i.calendarOnly).map((i) => i.dueDate);
+  const years = distinctYears(dueDates);
+  const monthOptions = sp.year
+    ? monthsInYearFromDates(dueDates, sp.year).map((m) => ({ value: m, label: monthLabel(m) }))
+    : [];
+  const weekOptions = sp.month
+    ? weeksInMonthFromDates(dueDates, sp.month).map((w) => ({ value: w, label: weekLabel(w) }))
+    : [];
+
   return (
     <div className="mx-auto max-w-6xl">
       <header className="mb-6">
@@ -38,6 +69,20 @@ export default async function CompliancePage() {
           Date-driven obligations across your access — home visits, medical exams, court reports.
         </p>
       </header>
+
+      <div className="mb-4">
+        <PeriodFilter
+          years={years.map((y) => ({ value: y, label: y }))}
+          months={monthOptions}
+          weeks={weekOptions}
+        />
+      </div>
+
+      <p className="mb-6 text-[13px] text-muted">
+        {periodActive
+          ? "Showing every obligation due in this period, with its status as of today — a past period is not re-run as of that date, since the export only ever holds the current state."
+          : "Showing outstanding obligations only. Pick a year above to browse everything due in a period, regardless of status."}
+      </p>
 
       <section className="mb-6 grid gap-4 sm:grid-cols-3">
         <KpiCard label="Overdue" value={String(overdue)} tone={overdue ? "risk" : "good"} />

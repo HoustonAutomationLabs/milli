@@ -10,8 +10,9 @@ wrong.** This was requested explicitly. Concretely:
 
 - When a decision has a risk the user may not have considered, say so plainly
   once, explain the mechanism, and offer the safer path — do not just comply.
-  This has already mattered twice: the Zoho feed the audit showed was
-  unnecessary, and a plan to put real children's records on a public URL.
+  This has already mattered three times: the Zoho feed the audit showed was
+  unnecessary, a plan to put real children's records on a public URL, and real
+  PHI landing hourly in a personal Gmail Drive folder with no possible BAA.
 - Prefer a direct question over a guess when the answer changes the work.
 - Correct factual misunderstandings even when they are the user's stated
   reason for a decision. "Only I open it on this device" was a genuine
@@ -21,6 +22,20 @@ wrong.** This was requested explicitly. Concretely:
   lowest-effort path that gets the same answer.
 - Verify claims rather than asserting them. Every "this is safe" or "this
   works" in this repo should be backed by something that was actually run.
+
+## Document format preferences (2026-09-02, all documents — not milli-specific)
+
+Standing preference for every scope-of-work and proposal document written for
+this user, regardless of project:
+
+- **PDF at the bare minimum.** Not an Excel/spreadsheet file. A PDF is always
+  produced; other formats (e.g. .docx) are extra, never a substitute.
+- **White background, black text, by default.** No color accents, no shaded
+  fills, no palette — plain black-on-white unless the user asks for something
+  else on a specific document.
+- This is a general authoring preference, not something about the milli
+  codebase — it applies to any proposal/SOW written for this user, in any repo
+  or context.
 
 ## Hard rules for this project
 
@@ -33,16 +48,42 @@ wrong.** This was requested explicitly. Concretely:
 2. **De-identify before sharing anything derived from real exports** —
    `npm run deidentify`. It preserves every statistic and replaces every name.
 3. **Never print client names in chat, commits, PRs, or artifacts.** Use IDs,
-   initials, or aggregates. `npm run inspect:export` masks by default.
+   initials, or aggregates. `npm run inspect:export` masks by default. This is
+   not a demo-only rule — it applies exactly as much to the real production
+   build (2026-09-02: user confirmed agency authorization to proceed with the
+   real system) as to the public Netlify demo. IDs-not-names is a display
+   convention, not the `deidentify` synthetic-name pipeline (rule 2), which is
+   specific to the public demo; this rule stands regardless of which one is
+   in play.
 4. Real exports live in `./data/exports` and are gitignored. So is
    `.er-session.json`, which is an authenticated credential.
 5. **Run `npm run verify:deidentified -- <dir>` before publishing anything.**
    It checks every column of every file and exits non-zero on any unscrubbed
    name. The de-identifier's own report cannot catch this class of mistake —
    it counts what it replaced, not what it never looked at.
+6. **A personal `@gmail.com` account cannot hold real PHI compliantly.**
+   Google only offers a HIPAA BAA to Google Workspace accounts — a consumer
+   Gmail/Drive account has no BAA option at all, regardless of folder sharing
+   settings, and Drive full-text-indexes file contents so anything with query
+   access to a folder can retrieve real names via search without opening the
+   file. A separate hourly automation (outside this repo) currently writes
+   real ExtendedReach exports into such a personal-account Drive folder — this
+   was flagged to the user 2026-09-02 and they chose to keep it running while
+   handling storage separately. Don't build more on top of that folder as if
+   it were compliant storage; treat every file in it as PHI with no BAA
+   coverage until it moves to a Workspace account (or elsewhere with one).
 
 ## Project facts established so far
 
+- **2026-09-02: this is now a real, agency-authorized production build**, not
+  just a stakeholder demo. The user confirmed the agency has given permission
+  to proceed and wants the system agency-managed. The Netlify-demo /
+  `deidentify`-pipeline discussion (hard rules 1–2) is specific to that one
+  public demo site and does not need to be re-raised for internal production
+  build decisions — the user asked for this explicitly and it's settled. What
+  does NOT change: hard rule 3 (no raw PHI names in chat/commits/PRs/
+  artifacts) — that's a blanket rule about Claude's own outputs, unrelated to
+  which deployment target is being discussed.
 - **ExtendedReach has no API and no report scheduling** on this plan. Data
   leaves via one-click Excel exports only — no CSV anywhere. See
   `docs/extendedreach-audit.md`, which is the record of the system audit.
@@ -129,6 +170,100 @@ wrong.** This was requested explicitly. Concretely:
   the other tiers by the case's assigned worker from the open-cases roster.
   Items naming nobody are counted in totals but excluded from the ranking, and
   the excluded count is shown.
+- **2026-09-03: never call the product "Milli" in anything client-facing.**
+  "Milli" is only this GitHub repo's internal name — a placeholder, not a
+  product brand. Proposals, scope-of-work documents, invoices, and any other
+  material the agency sees must refer to it descriptively instead (e.g.
+  "Houston Strong's ExtendedReach Dashboard"). This does not rename the
+  repository itself — only the branding used with the agency. Exact final
+  product name is otherwise unconfirmed by the user.
+- **2026-09-03: added a bundled add-on — a Recruitment Pipeline Automation
+  Layer** (Trello + ExtendedReach), on top of the $1,200 dashboard build: a
+  7-stage Trello board synced from the existing hourly ExtendedReach export
+  pipeline (17 reports, matched on each home's stable ExtendedReach record
+  ID), four applicant communication templates, a one-page HIPAA/PHI boundary
+  brief (PHI stays in ExtendedReach; Trello only ever holds non-identifying
+  record IDs), and an integration-flow diagram. Sync automation is Make.com
+  -based: Phase 1 (current) is a proof-of-concept advancing cards through the
+  early/late stages (Inquiry → Orientation → Portal-Active → Anticipated
+  Approval → Licensed); Phase 2 extends it to the middle stages (Document
+  Collection, Home Study) once richer ExtendedReach reports are wired in.
+  Priced at $500 flat, bundled specifically because it replaces what the
+  agency would otherwise pay ExtendedReach's own Zoho Analytics add-on for
+  ($500 implementation + $140/mo): the one-time fee is a wash either way, so
+  the real pitch is the recurring gap — this bundle adds only ~$20–50/mo in
+  Google Cloud hosting (same estimate as the dashboard alone) instead of
+  $140/mo to Zoho, roughly $1,000+/year and ~$5,000 over five years.
+- **2026-09-03: payment terms — 50% due upfront at signing, 50% due at
+  delivery / end of engagement.** No retainer, $399 flat per call for any
+  question/update/service request after delivery (established 2026-09-02),
+  and the same hard end-of-engagement clause: once the automation is deployed
+  and left running, the build engagement is over and any further contact is a
+  new, separately billed $399 call. Payment method: Zelle — exact contact
+  info (phone/email) still needed from the user before it can be printed on
+  any client-facing document; do not invent one.
+- **2026-09-03: user asked compliance/BAA content be minimized and moved to
+  the very bottom of client-facing proposals**, stating the agency's BAA
+  coverage is already in place and they hold executive decision authority to
+  proceed. Kept as one brief factual note rather than removed outright — "the
+  BAAs are handled" is the user's own account of agency-side state, not
+  something Claude has independently verified, so it is stated as their
+  representation, not asserted as a fact Claude confirmed.
+- **2026-09-03: proposal timeline — ~1 week to proof of concept, ~2 weeks to
+  full build installed on the agency's systems.**
+- **2026-09-03: the hourly ExtendedReach report pull runs as a Python script
+  on a designated agency-owned computer, not a cloud job.** This is what the
+  $500 bundle fee replaces instead of the ExtendedReach/Zoho $500
+  implementation fee — same one-time cost, but hourly during business hours
+  rather than Zoho's nightly export, and it lives at the agency's office, not
+  in Google Cloud. The user explicitly wants it stated to the client that
+  Zoho's export feature and this script do the identical job (pull current
+  reports into a usable file) — neither adds analysis or design beyond what
+  the dashboard/board already deliver. Practical implication for the
+  requirements sheet below: that machine must stay powered on and connected
+  during business hours, and needs local install rights once, up front.
+- **2026-09-03: added a companion one-page document, "What We'll Need From
+  You"** — the access/account checklist the user asked for, answering their
+  own question (Google Workspace Editor, not Admin/Super Admin, is what this
+  build needs; Workspace Admin only becomes relevant later for a Workspace-
+  SSO login, which is out of this scope). Covers ExtendedReach reporting
+  access, the Drive folder, the designated on-site machine, Trello workspace
+  access, and who owns the Make.com account — each with the specific access
+  level needed and why, so nothing is over-granted. Sent alongside the
+  proposal PDF, not merged into it.
+- **2026-09-03: Zelle payment info confirmed by user** — info@ondemandfurn.com,
+  Name: On Demand Media, LLC. Filled into the Payment Terms table.
+- **2026-09-03: added an itemized Deliverables section (Section 3)** to the
+  proposal, placed right after the two scope sections and before pricing —
+  Claude's call on placement, per the user's "you decide" instruction.
+  Breaks out every dashboard screen (who sees it, what it shows), every
+  ExtendedReach report by group (naming only the 14 report slugs actually
+  verified in this repo — `pastdue_case`, `needapproval_case`,
+  `rejected_case`, `reportscompleted`, `compliance_case`, `opencases`,
+  `pastdue_home`, `caseload`, `ontime`, `openbeds`, plus the four still-
+  unwired `inprocess`/`completions`/`nextcourt`/`staffexp` — and stating
+  plainly that the remaining reports needed to reach the bundle's "17" are
+  unconfirmed Phase-2 recruitment/compliance reports, not invented names),
+  all 7 recruitment-board stages with which phase automates each, and the
+  four communication templates plus the two documentation deliverables.
+  Pushed the document to exactly 3 pages (the user's stated cap) by
+  tightening margins/spacing rather than cutting content.
+- **2026-09-03: added a one-page Data Processing &amp; Business Associate
+  Agreement**, at the user's request, because the client already required a
+  signed NDA and compliance/security acknowledgement and asked for something
+  binding both directions in return. Framed explicitly as a HIPAA Business
+  Associate Agreement (not just a generic "DPA") since real children's PHI is
+  in scope — flagged to the user that this naming/framing matters and that,
+  because it's a binding legal document covering PHI for a minor population,
+  it should get a licensed-attorney review before either party signs; this
+  is boilerplate Claude drafted, not vetted legal advice. Covers: BA/CE
+  roles under 45 C.F.R. §160.103, permitted use, the Trello/Make.com
+  non-PHI data boundary already established in the SOW, safeguards,
+  subcontractor flow-down, 5-business-day breach notice, Client-side
+  obligations (mutual, not just BA-side), return/destruction within 30 days
+  of engagement end, no data ownership transfer, audit rights, mutual
+  indemnification capped at fees paid (uncapped for PHI-handling breaches),
+  and Texas governing law.
 
 ## Commands
 
@@ -138,6 +273,8 @@ npm run dev                                # mock data
 npm run export:er                          # pull reports from ExtendedReach
 npm run inspect:export -- ./data/exports   # reconcile columns; masked output
                                            # reads .xlsx and .csv
+npm run split:workbook -- <combined.xlsx>  # split a Drive-style combined
+                                           # workbook into per-slug files first
 npm run deidentify -- ./real --out ./data/exports   # all files in ONE run
 DATA_SOURCE=exports npm run dev            # real (or de-identified) data
 npm run build && npx tsc --noEmit          # before any push
@@ -166,11 +303,59 @@ wrong numbers" is always visible on the page, never silent.
 
 - Authentication is stubbed. Production needs a real IdP and a HIPAA-eligible
   host — Netlify and Vercel default tiers are neither.
-- Column mappings verified for five reports: `pastdue_case`,
-  `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`.
-  Still unverified — no export seen yet: `opencases`, `pastdue_home`,
-  `inprocess`, `completions`, `caseload`, `ontime`, `openbeds`, `nextcourt`,
+- **2026-09-02: added `/admin/users`, a CEO-only "Manage Users" screen**,
+  because Google Workspace SSO (once wired up) only proves *identity* — it
+  does not decide who gets a dashboard account or what role/team they see.
+  Backed by `src/lib/roster.ts`: an explicit email -> role -> teamIds ->
+  caseworkerId list, edited from the UI, gated by the existing
+  `manageUsers` permission (CEO only). `resolveRosterUser(email)` is the
+  seam a real SSO callback should call before issuing a session — an email
+  Google can verify but that isn't on this roster must be refused, not
+  defaulted to any role. **Storage is a local JSON file
+  (`./data/roster.json`, gitignored) — explicitly a placeholder.** Cloud
+  Run instances don't share or persist local disk, so this must move to a
+  durable store (a DB row, Firestore) before real production use; it is
+  fine for local/dev use in the meantime. Verified in the browser via
+  Playwright: CEO can add/remove roster entries, and a staff account is
+  redirected away from `/admin/users`.
+- Column mappings verified for nine reports: `pastdue_case`,
+  `needapproval_case`, `rejected_case`, `reportscompleted`, `compliance_case`,
+  `opencases`, `pastdue_home`, `caseload`, `ontime`. Also now verified,
+  2026-09-02, against a real export pulled from the hourly Drive automation
+  (see the Gmail/BAA note in Hard Rules): `openbeds` — its `worker` column is
+  headed "Home Worker", not "Worker" (added as an alias), and `bedsAvailable`
+  values look like `"1 of 2"` (parses fine as-is: `parseInt` reads the leading
+  number, which is beds *available*, not capacity — the "of N" half is
+  currently discarded). `opencases`'s `removalDate` column came through as the
+  literal text `document.write(removalViewName);` in that export — a broken
+  cell from that automation's pull, not a real header to alias. Still
+  unverified — no export seen yet: `inprocess`, `completions`, `nextcourt`,
   `staffexp`.
+- **`openbeds` is now wired into the dataset** as `CaseworkDataset.homes`, and
+  has its own page at `/homes` (permission `viewHomesRegister`, same
+  ceo/manager-only default as compliance). Deliberately thin: the export also
+  carries the home's address, phone, and an `Active Placements` column naming
+  the children currently there; none of it is modelled or shown — a capacity
+  register doesn't need it, and it's the same minimum-necessary call the rest
+  of this app makes.
+- **The "Foster Homes / Recruitment / Placements / Monthly Data" dashboard the
+  user asked to replicate does not match what ExtendedReach actually exports.**
+  `openbeds` covers home capacity; nothing in the export set covers a
+  recruitment pipeline, a children roster, placement history, or a monthly
+  rollup sheet — those aren't ExtendedReach report views on this plan. Built
+  `/homes` from `openbeds` (real capacity data) rather than fabricating the
+  other tabs against no data source. Ask the vendor, or find whichever system
+  actually tracks recruitment, before building those.
+- **A combined multi-sheet workbook (e.g. from the Drive automation) needs
+  `npm run split:workbook` before `inspect:export`/the loader can read it** —
+  see `scripts/README.md`. Splitting **11** real sheets from a 2026-09-02
+  export matched **11/11** known report slugs cleanly.
+- **Nothing yet moves Drive → the live Netlify dashboard automatically.** The
+  deployed site reads `ER_EXPORT_DIR` from local disk at request time; it has
+  no Google Drive access of its own. "Hourly to Drive" and "updates production"
+  are two different systems today — see `scripts/README.md` for what closing
+  that gap needs (a scheduled job with real Drive API credentials, writing
+  into wherever the deploy reads from).
 - `needapproval_case` **is now wired** — it is the only source of the approver
   (`Submit To`) that tier 2 needs. Deduped against Submitted rows already
   ingested from the task reports, keyed subject + type; the count lands in

@@ -255,7 +255,7 @@ export const REPORT_SPECS: Record<string, ReportSpec> = {
     fields: {
       home: ["name", "home", "household", "home name", "provider"],
       licenseType: ["provider type", "license type", "license"],
-      worker: ["worker"],
+      worker: ["worker", "home worker"],
       address: ["address"],
       phone: ["phone"],
       lastPlacement: ["last placement (in or out)", "last placement", "last placement date"],

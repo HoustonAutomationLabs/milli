@@ -14,6 +14,7 @@ import type {
   Caseworker,
   ComplianceItem,
   ComplianceState,
+  HomeRecord,
   OnTimePoint,
   Team,
   TrendPoint,
@@ -213,6 +214,23 @@ const onTime: OnTimePoint[] = trend.map((t, idx) => {
   };
 });
 
+const LICENSE_TYPES = ["Foster Family", "Kinship", "Therapeutic", "Emergency"];
+const AGE_RANGES = ["0-5", "6-12", "13-17", "0-17"];
+const GENDERS = ["Any", "Male", "Female"];
+
+const homes: HomeRecord[] = Array.from({ length: 14 }, (_, i) => {
+  const beds = Math.floor(rnd() * 4);
+  return {
+    id: `hm-${i}`,
+    displayId: `HM-${400 + i}`,
+    licenseType: pick(LICENSE_TYPES),
+    bedsAvailable: beds,
+    ageRange: pick(AGE_RANGES),
+    gender: pick(GENDERS),
+    lastPlacement: daysFromNow(-Math.floor(rnd() * 200) - 5),
+  };
+});
+
 export const MOCK_DATASET: CaseworkDataset = {
   teams: TEAMS,
   caseworkers: CASEWORKERS,
@@ -220,4 +238,5 @@ export const MOCK_DATASET: CaseworkDataset = {
   compliance,
   trend,
   onTime,
+  homes,
 };

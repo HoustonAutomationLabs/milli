@@ -20,6 +20,9 @@ export type AuditAction =
   | "view_caseload"
   | "view_case"
   | "view_compliance"
+  | "view_homes"
+  | "view_admin_users"
+  | "roster_update"
   | "denied";
 
 export interface AuditEvent {

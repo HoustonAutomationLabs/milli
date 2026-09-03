@@ -11,13 +11,27 @@ import {
   scopeDataset,
   upcomingItems,
 } from "@/lib/metrics";
+import {
+  distinctYears,
+  filterByYear,
+  monthLabel,
+  monthsInYear,
+  onTimeForMonth,
+  trendForMonth,
+} from "@/lib/period";
 import { Card, ComplianceBadge, KpiCard, SectionTitle } from "@/components/ui";
 import { TrendChart } from "@/components/trend-chart";
+import { PeriodFilter } from "@/components/period-filter";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string; month?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
+  const sp = await searchParams;
   const data = await getDataset();
   const { scope, boundTo } = resolveScope(user, data);
   const scoped = scopeDataset(data, scope);
@@ -29,6 +43,19 @@ export default async function DashboardPage() {
   const upcoming = upcomingItems(scoped, 8);
   const trend = agencyTrend(data);
   const caseById = new Map(scoped.cases.map((c) => [c.id, c]));
+
+  // Year -> month drill for the trend/on-time series only — the two things in
+  // this dataset that are genuinely historical (see src/lib/period.ts). The
+  // KPI tiles above stay as-of-today regardless of this filter; they're a
+  // snapshot with no history to select from.
+  const trendYears = distinctYears(trend.map((t) => t.month));
+  const filteredTrend = filterByYear(trend, sp.year);
+  const monthOptions = sp.year
+    ? monthsInYear(trend, sp.year).map((m) => ({ value: m, label: monthLabel(m) }))
+    : [];
+  const monthDetail = sp.year && sp.month ? trendForMonth(filteredTrend, sp.month) : undefined;
+  const onTimeMonth =
+    sp.year && sp.month ? onTimeForMonth(data.onTime ?? [], sp.month) : undefined;
 
   const heading =
     user.role === "ceo"
@@ -46,6 +73,12 @@ export default async function DashboardPage() {
           {scoped.cases.length === 1 ? "" : "s"} within your access.
         </p>
       </header>
+
+      <p className="mb-4 text-[13px] text-muted">
+        The tiles below are as of today — the export doesn&rsquo;t keep a history of case
+        counts to look back on.{" "}
+        {can(user, "viewAgencyKpis") ? "The trend below does, and can be filtered by year and month." : null}
+      </p>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Active cases" value={String(kpis.activeCases)} />
@@ -78,26 +111,60 @@ export default async function DashboardPage() {
               months the agency has recorded — so a hard-coded span is wrong
               the moment the data is anything other than a full year.
             */}
-            <div className="mb-4 flex items-baseline justify-between">
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
               <SectionTitle>
-                Active cases &middot; {trend.length} month{trend.length === 1 ? "" : "s"}
+                Active cases &middot;{" "}
+                {sp.year
+                  ? `${filteredTrend.length} month${filteredTrend.length === 1 ? "" : "s"} in ${sp.year}`
+                  : `${trend.length} month${trend.length === 1 ? "" : "s"}`}
               </SectionTitle>
               <span className="text-[13px] text-muted tnum">
                 {trend.at(-1)?.activeCases} in {trend.at(-1)?.month}
               </span>
             </div>
-            <TrendChart data={trend} />
-            {/*
-              The newest point is whatever the export captured, and exports are
-              taken mid-month. Without this the final month reads as a sudden
-              drop in caseload rather than an incomplete count — the kind of
-              thing an executive acts on.
-            */}
-            <p className="mt-3 text-[13px] leading-snug text-muted">
-              {trend[0]?.month} to {trend.at(-1)?.month}. The latest month is
-              counted up to the export date and may be incomplete, so a dip at the
-              right-hand end is not necessarily a fall in caseload.
-            </p>
+
+            <div className="mb-4">
+              <PeriodFilter
+                years={trendYears.map((y) => ({ value: y, label: y }))}
+                months={monthOptions}
+              />
+            </div>
+
+            {monthDetail ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <KpiCard label={monthLabel(monthDetail.month)} value={String(monthDetail.activeCases)} hint="Active cases" />
+                  <KpiCard label="Intakes that month" value={String(monthDetail.intakes)} />
+                  <KpiCard label="Discharges that month" value={String(monthDetail.discharges)} />
+                </div>
+                {onTimeMonth ? (
+                  <p className="mt-3 text-[13px] leading-snug text-muted">
+                    On-time completion in {monthLabel(onTimeMonth.month)}:{" "}
+                    <span className="tnum text-ink-soft">{onTimeMonth.onTimePct}%</span> across{" "}
+                    <span className="tnum">{onTimeMonth.sample}</span> completed items.
+                  </p>
+                ) : (
+                  <p className="mt-3 text-[13px] leading-snug text-muted">
+                    No on-time completion data loaded for this month.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <TrendChart data={filteredTrend} />
+                {/*
+                  The newest point is whatever the export captured, and exports
+                  are taken mid-month. Without this the final month reads as a
+                  sudden drop in caseload rather than an incomplete count — the
+                  kind of thing an executive acts on.
+                */}
+                <p className="mt-3 text-[13px] leading-snug text-muted">
+                  {filteredTrend[0]?.month ?? "—"} to {filteredTrend.at(-1)?.month ?? "—"}. The
+                  latest month is counted up to the export date and may be incomplete, so a dip
+                  at the right-hand end is not necessarily a fall in caseload.
+                </p>
+              </>
+            )}
           </Card>
         ) : (
           <Card className="lg:col-span-2">

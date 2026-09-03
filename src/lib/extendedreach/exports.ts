@@ -29,6 +29,7 @@ import type {
   Caseworker,
   ComplianceItem,
   ComplianceState,
+  HomeRecord,
   OnTimePoint,
   Team,
   TrendPoint,
@@ -271,7 +272,7 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
     diagnostics[slug] = { found: grid.length > 0, rows: rows.length };
   };
 
-  const [gOpen, gPastCase, gPastHome, gInproc, gCaseload, gOnTime, gNeedApproval] =
+  const [gOpen, gPastCase, gPastHome, gInproc, gCaseload, gOnTime, gNeedApproval, gOpenBeds] =
     await Promise.all([
       gridFor(dir, "opencases"),
       gridFor(dir, "pastdue_case"),
@@ -280,6 +281,7 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
       gridFor(dir, "caseload"),
       gridFor(dir, "ontime"),
       gridFor(dir, "needapproval_case"),
+      gridFor(dir, "openbeds"),
     ]);
 
   // --- caseworkers and teams ------------------------------------------------
@@ -516,8 +518,29 @@ export async function loadExportDataset(dir: string): Promise<ExportLoadResult> 
       avgDaysLate: Math.round((b.daysLate / b.total) * 10) / 10,
     }));
 
+  // --- foster home capacity --------------------------------------------------
+  // Not case-scoped, and deliberately thin: the export also carries the home's
+  // address, phone, and the names of children currently placed there, none of
+  // which a capacity register needs. See `HomeRecord`.
+  const openBedsRows = rowsFor(gOpenBeds, REPORT_SPECS.openbeds);
+  note("openbeds", gOpenBeds, openBedsRows);
+
+  const homes: HomeRecord[] = openBedsRows.map((r) => {
+    const name = (r.home ?? "").trim();
+    const beds = Number.parseInt((r.bedsAvailable ?? "").trim(), 10);
+    return {
+      id: homeDisplayId(name),
+      displayId: homeDisplayId(name),
+      licenseType: r.licenseType ?? "",
+      bedsAvailable: Number.isNaN(beds) ? null : beds,
+      ageRange: r.ageRange ?? "",
+      gender: r.gender ?? "",
+      lastPlacement: toIso(r.lastPlacement ?? "") ?? "",
+    };
+  });
+
   return {
-    dataset: { teams, caseworkers, cases, compliance, trend, onTime },
+    dataset: { teams, caseworkers, cases, compliance, trend, onTime, homes },
     diagnostics,
   };
 }
