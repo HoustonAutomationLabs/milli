@@ -209,6 +209,28 @@ this user, regardless of project:
   BAAs are handled" is the user's own account of agency-side state, not
   something Claude has independently verified, so it is stated as their
   representation, not asserted as a fact Claude confirmed.
+- **2026-09-03: proposal timeline — ~1 week to proof of concept, ~2 weeks to
+  full build installed on the agency's systems.**
+- **2026-09-03: the hourly ExtendedReach report pull runs as a Python script
+  on a designated agency-owned computer, not a cloud job.** This is what the
+  $500 bundle fee replaces instead of the ExtendedReach/Zoho $500
+  implementation fee — same one-time cost, but hourly during business hours
+  rather than Zoho's nightly export, and it lives at the agency's office, not
+  in Google Cloud. The user explicitly wants it stated to the client that
+  Zoho's export feature and this script do the identical job (pull current
+  reports into a usable file) — neither adds analysis or design beyond what
+  the dashboard/board already deliver. Practical implication for the
+  requirements sheet below: that machine must stay powered on and connected
+  during business hours, and needs local install rights once, up front.
+- **2026-09-03: added a companion one-page document, "What We'll Need From
+  You"** — the access/account checklist the user asked for, answering their
+  own question (Google Workspace Editor, not Admin/Super Admin, is what this
+  build needs; Workspace Admin only becomes relevant later for a Workspace-
+  SSO login, which is out of this scope). Covers ExtendedReach reporting
+  access, the Drive folder, the designated on-site machine, Trello workspace
+  access, and who owns the Make.com account — each with the specific access
+  level needed and why, so nothing is over-granted. Sent alongside the
+  proposal PDF, not merged into it.
 
 ## Commands
 
