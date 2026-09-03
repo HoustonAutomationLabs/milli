@@ -248,6 +248,22 @@ this user, regardless of project:
   four communication templates plus the two documentation deliverables.
   Pushed the document to exactly 3 pages (the user's stated cap) by
   tightening margins/spacing rather than cutting content.
+- **2026-09-03: added a one-page Data Processing &amp; Business Associate
+  Agreement**, at the user's request, because the client already required a
+  signed NDA and compliance/security acknowledgement and asked for something
+  binding both directions in return. Framed explicitly as a HIPAA Business
+  Associate Agreement (not just a generic "DPA") since real children's PHI is
+  in scope — flagged to the user that this naming/framing matters and that,
+  because it's a binding legal document covering PHI for a minor population,
+  it should get a licensed-attorney review before either party signs; this
+  is boilerplate Claude drafted, not vetted legal advice. Covers: BA/CE
+  roles under 45 C.F.R. §160.103, permitted use, the Trello/Make.com
+  non-PHI data boundary already established in the SOW, safeguards,
+  subcontractor flow-down, 5-business-day breach notice, Client-side
+  obligations (mutual, not just BA-side), return/destruction within 30 days
+  of engagement end, no data ownership transfer, audit rights, mutual
+  indemnification capped at fees paid (uncapped for PHI-handling breaches),
+  and Texas governing law.
 
 ## Commands
 
