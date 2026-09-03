@@ -170,6 +170,45 @@ this user, regardless of project:
   the other tiers by the case's assigned worker from the open-cases roster.
   Items naming nobody are counted in totals but excluded from the ranking, and
   the excluded count is shown.
+- **2026-09-03: never call the product "Milli" in anything client-facing.**
+  "Milli" is only this GitHub repo's internal name — a placeholder, not a
+  product brand. Proposals, scope-of-work documents, invoices, and any other
+  material the agency sees must refer to it descriptively instead (e.g.
+  "Houston Strong's ExtendedReach Dashboard"). This does not rename the
+  repository itself — only the branding used with the agency. Exact final
+  product name is otherwise unconfirmed by the user.
+- **2026-09-03: added a bundled add-on — a Recruitment Pipeline Automation
+  Layer** (Trello + ExtendedReach), on top of the $1,200 dashboard build: a
+  7-stage Trello board synced from the existing hourly ExtendedReach export
+  pipeline (17 reports, matched on each home's stable ExtendedReach record
+  ID), four applicant communication templates, a one-page HIPAA/PHI boundary
+  brief (PHI stays in ExtendedReach; Trello only ever holds non-identifying
+  record IDs), and an integration-flow diagram. Sync automation is Make.com
+  -based: Phase 1 (current) is a proof-of-concept advancing cards through the
+  early/late stages (Inquiry → Orientation → Portal-Active → Anticipated
+  Approval → Licensed); Phase 2 extends it to the middle stages (Document
+  Collection, Home Study) once richer ExtendedReach reports are wired in.
+  Priced at $500 flat, bundled specifically because it replaces what the
+  agency would otherwise pay ExtendedReach's own Zoho Analytics add-on for
+  ($500 implementation + $140/mo): the one-time fee is a wash either way, so
+  the real pitch is the recurring gap — this bundle adds only ~$20–50/mo in
+  Google Cloud hosting (same estimate as the dashboard alone) instead of
+  $140/mo to Zoho, roughly $1,000+/year and ~$5,000 over five years.
+- **2026-09-03: payment terms — 50% due upfront at signing, 50% due at
+  delivery / end of engagement.** No retainer, $399 flat per call for any
+  question/update/service request after delivery (established 2026-09-02),
+  and the same hard end-of-engagement clause: once the automation is deployed
+  and left running, the build engagement is over and any further contact is a
+  new, separately billed $399 call. Payment method: Zelle — exact contact
+  info (phone/email) still needed from the user before it can be printed on
+  any client-facing document; do not invent one.
+- **2026-09-03: user asked compliance/BAA content be minimized and moved to
+  the very bottom of client-facing proposals**, stating the agency's BAA
+  coverage is already in place and they hold executive decision authority to
+  proceed. Kept as one brief factual note rather than removed outright — "the
+  BAAs are handled" is the user's own account of agency-side state, not
+  something Claude has independently verified, so it is stated as their
+  representation, not asserted as a fact Claude confirmed.
 
 ## Commands
 
