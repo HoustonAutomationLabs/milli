@@ -231,6 +231,23 @@ this user, regardless of project:
   access, and who owns the Make.com account — each with the specific access
   level needed and why, so nothing is over-granted. Sent alongside the
   proposal PDF, not merged into it.
+- **2026-09-03: Zelle payment info confirmed by user** — info@ondemandfurn.com,
+  Name: On Demand Media, LLC. Filled into the Payment Terms table.
+- **2026-09-03: added an itemized Deliverables section (Section 3)** to the
+  proposal, placed right after the two scope sections and before pricing —
+  Claude's call on placement, per the user's "you decide" instruction.
+  Breaks out every dashboard screen (who sees it, what it shows), every
+  ExtendedReach report by group (naming only the 14 report slugs actually
+  verified in this repo — `pastdue_case`, `needapproval_case`,
+  `rejected_case`, `reportscompleted`, `compliance_case`, `opencases`,
+  `pastdue_home`, `caseload`, `ontime`, `openbeds`, plus the four still-
+  unwired `inprocess`/`completions`/`nextcourt`/`staffexp` — and stating
+  plainly that the remaining reports needed to reach the bundle's "17" are
+  unconfirmed Phase-2 recruitment/compliance reports, not invented names),
+  all 7 recruitment-board stages with which phase automates each, and the
+  four communication templates plus the two documentation deliverables.
+  Pushed the document to exactly 3 pages (the user's stated cap) by
+  tightening margins/spacing rather than cutting content.
 
 ## Commands
 
