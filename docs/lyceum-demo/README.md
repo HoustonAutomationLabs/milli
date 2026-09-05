@@ -14,7 +14,7 @@ against, and in none of the fabricated submission documents.
 | `gate.py` | Solicitation parameters, fictional firm library, allocation, and the 20-check gate |
 | `fill_forms.py` | Fills Attachments 1 and 4 by writing cell values into the vendor workbooks |
 | `checks.py` | Mechanical responsiveness checks (naming, page limit, cross-document consistency) |
-| `out/*.xlsx` | The two filled workbooks |
+| `out/*.xlsx` | The two filled workbooks — **gitignored by design** (`*.xlsx` is excluded repo-wide so no real export is ever committed). Regenerate with `fill_forms.py`. |
 | `out/proposal_draft.md` | The 12-page narrative draft |
 
 Run order: `gate.py` → `fill_forms.py` → `checks.py`. Requires `openpyxl`.
