@@ -14,10 +14,14 @@ against, and in none of the fabricated submission documents.
 | `gate.py` | Solicitation parameters, fictional firm library, allocation, and the 20-check gate |
 | `fill_forms.py` | Fills Attachments 1 and 4 by writing cell values into the vendor workbooks |
 | `checks.py` | Mechanical responsiveness checks (naming, page limit, cross-document consistency) |
+| `budget.py` | Page-budget floor **and** ceiling, per section, with a rewrite worklist |
+| `solver.py` | Team-composition solver: feasibility, goal ceiling, single-firm sensitivity |
 | `out/*.xlsx` | The two filled workbooks — **gitignored by design** (`*.xlsx` is excluded repo-wide so no real export is ever committed). Regenerate with `fill_forms.py`. |
 | `out/proposal_draft.md` | The 12-page narrative draft |
 
-Run order: `gate.py` → `fill_forms.py` → `checks.py`. Requires `openpyxl`.
+Run order: `solver.py` → `gate.py` → `fill_forms.py` → `checks.py` → `budget.py`.
+`fill_forms.py` and `checks.py` need `openpyxl`; the other two are stdlib only.
+`budget.py` and `checks.py` exit non-zero on a failure, so they can gate a build.
 
 ## Results
 
@@ -30,6 +34,12 @@ Run order: `gate.py` → `fill_forms.py` → `checks.py`. Requires `openpyxl`.
 - **Narrative: 72% of budget** after one corrective pass, from 51% on the first.
 - **Mechanical: 10/11.** The single failure is the PTC form, which cannot be
   produced outside CCIS.
+- **Budget: FAIL, 3 of 4 sections short.** The draft that passes every other
+  check fails this one. Section 2, the only section that got a targeted rewrite,
+  is the only section that passes — at 90%.
+- **Solver: feasible, and every subprovider is load-bearing.** It reproduces the
+  hand-built allocation to within two categories, and both of its disagreements
+  are corrections.
 
 ## Findings
 
@@ -66,6 +76,33 @@ against a stated word count, measure, then run one targeted corrective pass.
 **Under-length must be a failing check.** Every control in the process catches
 overflow — page limits, allotted space, excess pages removed. Nothing catches
 leaving scored space unused, which is the more common and more expensive error.
+`budget.py` now enforces a floor at 90% of each section's weight-derived target
+and prints a per-section word deficit ranked by the points left uncontested,
+because the deficit is the input to the rewrite that measurably works.
+
+## What the solver found
+
+**Losing any one of the six subproviders makes the bid infeasible.** Not weaker
+— infeasible. Twenty-two of twenty-seven categories have exactly one qualified
+leader in the entire library, so six of six departures are fatal, costing between
+2% and 15% of the work. A team assembled to cover the scope exactly has no
+redundancy anywhere, and nobody notices until a firm withdraws.
+
+**The DBE goal ceiling is 20%.** Only two firms in the library are certified,
+and the categories they can lead account for a fifth of the work. Any goal above
+that is unreachable by rearrangement, which is a do-not-bid answer available on
+day one instead of after six teaming conversations. This solicitation assigns no
+goal; the next one in the family may.
+
+**The solver exposed an unstated constraint by exploiting it.** Its first version
+satisfied every stated rule and made the Project Manager task leader for three
+categories totalling 35% of the work. Nothing in the solicitation forbids it, and
+no evaluator would score it well — key-staff experience is 26 points and project
+planning 30, both read as questions about depth. A concentration cap and a PM
+exclusion are now in the model, **marked as judgement parameters rather than
+requirements**, because that is what they are. With them in place the solver
+disagrees with the hand-built team in two categories, and in both it is right:
+the human-authored allocation had also quietly put the PM in a task-leader slot.
 
 ## Bugs the run found (two in the checks themselves)
 
