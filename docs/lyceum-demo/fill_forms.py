@@ -5,7 +5,7 @@ workbooks -- never regenerates them -- so sheet protection, data validation and
 the status formulas survive intact. The RFP warns that altering the structure or
 saving in another format invalidates the submission.
 """
-import shutil, sys, openpyxl
+import shutil, sys, os, subprocess, openpyxl
 from gate import PRIME, SUBS, STAFF, ALLOCATION, PROJECT_MANAGER, CONTACTED_NOT_TEAMED, SOL
 
 SRC = "/root/.claude/uploads/5dd1ff1c-cd01-50c6-8995-2bdc6a02bc56"
@@ -89,7 +89,26 @@ for firm, on_team in rows:
     w[f"F{r}"] = cert_status(firm)
     w[f"G{r}"] = "Yes" if on_team else "No"
     r += 1
+
+# Signature block, and the vendor template's print-area defect. Both were missed
+# on the first run: reading named cells never looked below the data rows, and
+# nothing rendered the sheet to see what a reviewer would. See fill6549_sub.py
+# for the full note — the template's print area stops at row 46 while the
+# printed-name and title cells are on row 47.
+w["A45"] = w["A47"] = pm["name"]        # electronic signature accepted
+w["E45"], w["E47"] = "2026-09-18", "Project Manager"
+if w.print_area and w.print_area.endswith("$H$46"):
+    w.print_area = w.print_area.replace("$H$46", "$H$47")
 wb2.save(s_out)
+
+# Attachment 4 is SUBMITTED AS PDF on both solicitations -- "The fillable file
+# posted with the solicitation must be completed and submitted as a PDF file."
+# The .xlsx is the working file; uploading it is non-responsive on format alone.
+s_pdf = f"{OUT}/{fname(4,'pdf')}"
+subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", OUT, s_out],
+               capture_output=True, text=True, timeout=180)
+if not os.path.exists(s_pdf):
+    print("WARNING: Attachment 4 PDF export failed — the .xlsx alone is not submittable")
 
 # ---------------------------------------------------------------- verification
 print("VERIFY — re-reading what was written\n" + "="*66)
@@ -109,4 +128,13 @@ if True:
     filled = sum(1 for r in range(11,37) if vs[f"F{r}"].value not in (None,"","-") or vs[f"G{r}"].value)
     print(f"  Q-59ES answered rows: {filled} of 22")
     print(f"  status formulas intact: {str(vs['H12'].value)[:28]}...")
-print(f"\nFilenames: {fname(1,'xlsx')} ({len(fname(1,'xlsx').rsplit('.',1)[0])} chars) / {fname(4,'xlsx')}")
+if os.path.exists(s_pdf):
+    from pypdf import PdfReader
+    flat = " ".join("\n".join(p.extract_text() or "" for p in PdfReader(s_pdf).pages).split())
+    miss = [f for f, _ in rows if " ".join(f.split()) not in flat]
+    print(f"\n  Attachment 4 SUBMITTED FILE: {s_pdf} ({os.path.getsize(s_pdf):,} bytes)")
+    print(f"  every listed firm survives the export: {'yes' if not miss else 'NO ' + str(miss)}")
+    print(f"  signature block in export: "
+          f"{'complete' if pm['name'] in flat and 'Project Manager' in flat else 'INCOMPLETE'}")
+print(f"\nFilenames: {fname(1,'xlsx')} / {fname(4,'pdf')} "
+      f"({len(fname(4,'pdf').rsplit('.',1)[0])}/25 chars)")

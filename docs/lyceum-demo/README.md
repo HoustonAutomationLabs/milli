@@ -25,6 +25,7 @@ against, and in none of the fabricated submission documents.
 | `prompts.py` | Coverage of the RFP's named narrative questions (6549 asks four) |
 | `q_form.py` | Reads an Attachment 1 questionnaire's response/comment rules from its own hidden sheet |
 | `fill6549.py` | Fills Attachment 1 (Q-37NY) for 6549 using those rules |
+| `fill6549_sub.py` | Fills Attachment 4 for 6549 **and exports it to PDF**, which is what gets uploaded |
 | `fill_forms.py` | Fills Attachments 1 and 4 by writing cell values into the vendor workbooks |
 | `checks.py` | Mechanical responsiveness checks (naming, page limit, cross-document consistency) |
 | `budget.py` | Page-budget floor **and** ceiling, per section, with a rewrite worklist |
@@ -60,6 +61,36 @@ Run order: `solver.py` → `sol<n>.py` → `fill_forms.py` → `checks.py` → `
 - **Solver: feasible, and every subprovider is load-bearing.** It reproduces the
   hand-built allocation to within two categories, and both of its disagreements
   are corrections.
+
+## Attachment 4: three defects, one of them TxDOT's
+
+**It is submitted as PDF, on both solicitations.** Both RFPs say it in the same
+words — *"The fillable file posted with the solicitation must be completed and
+submitted as a PDF file"* — and PEPS recommends Print to PDF to flatten it. The
+template is Excel (`601CT0000006541 Subprovider Info.xlsx`, `SUB TEMPL.xlsx`);
+the submission is PDF. The `.xlsx` delivered on the first run was non-responsive
+on format alone, and check `0.2` passed it because it verified that a file
+existed, never that it was the type the slot accepts. The portal's Requested
+Information table is the authority: Attachment 1 Excel, Attachments 2–4 PDF.
+`0.2b` now enforces it.
+
+**The form has a signature block, and reading named cells never saw it.** Below
+the data rows: signature, date, printed name, title, in merged cells beneath
+their labels. It became visible only when the sheet was rendered to PDF and read
+as a page rather than as cells. The first run's Attachment 4 was unsigned as well
+as wrongly formatted, on a document the form itself says "will become part of an
+awarded contract".
+
+**The vendor template's print area excludes its own last row.** Print area is
+`$A$1:$H$46` on both templates; the answer cells for *Printed (or typed) Name*
+and *Title* are on row **47**, under labels on row 46. Fill the form in Excel,
+Print to PDF exactly as PEPS recommends, upload — and those two fields are blank
+in the submitted document however carefully they were typed. This is a defect in
+TxDOT's file and it lands entirely on the bidder. The fix extends the print area
+by one row, changing no content and no structure.
+
+None of the three was findable by reading cells. All three needed the file
+rendered the way a reviewer sees it, then compared against its own source.
 
 ## The two questionnaires are identical except for one invisible flag
 

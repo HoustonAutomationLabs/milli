@@ -14,13 +14,25 @@ for n,ext in [(1,"xlsx"),(4,"xlsx")]:
       len(stem)<=25 and os.path.exists(f"{OUT}/{f}"), f"{f} ({len(stem)}/25 chars)")
 
 # --- 0.2 every requested-information slot filled
-slots={"Attachment 1 Cover Page":f"{OUT}/{PRIME['legal_name'][:12]}_{SOL['number'][-6:]}_Att 1.xlsx",
-       "Attachment 2 Proposal":NARR,
-       "Attachment 3 PTC Form":None,
-       "Attachment 4 Subprovider Info":f"{OUT}/{PRIME['legal_name'][:12]}_{SOL['number'][-6:]}_Att 4.xlsx"}
-missing=[k for k,v in slots.items() if v is None or not os.path.exists(v)]
+# The portal's Requested Information table states an upload type PER SLOT, and
+# that table is the authority -- not the format of the template you downloaded.
+# Attachment 1 is Excel; 2, 3 and 4 are PDF. The first version of this check
+# verified only that a file existed, and passed an .xlsx sitting in the
+# Attachment 4 slot, which is non-responsive on format alone.
+stem=f"{OUT}/{PRIME['legal_name'][:12]}_{SOL['number'][-6:]}_Att"
+slots={"Attachment 1 Cover Page":(f"{stem} 1.xlsx",".xlsx"),
+       "Attachment 2 Proposal":(NARR,".pdf"),
+       "Attachment 3 PTC Form":(None,".pdf"),
+       "Attachment 4 Subprovider Info":(f"{stem} 4.pdf",".pdf")}
+missing=[k for k,(v,_) in slots.items() if v is None or not os.path.exists(v)]
 c("0.2","All four requested-information slots filled", not missing,
   "PTC form must be generated in CCIS/Salesforce — cannot be produced here" if missing else "")
+wrong=[f"{k}: {os.path.splitext(v)[1]} where the portal requires {want}"
+       for k,(v,want) in slots.items()
+       if v and os.path.exists(v) and not v.lower().endswith(want)]
+c("0.2b","Each slot holds the file type the portal requires", not wrong,
+  "; ".join(wrong) if wrong else
+  "Att 1 .xlsx; Att 2 and 4 .pdf (Att 2 renders from markdown at submission)")
 
 # --- 0.11 / 29a page limit
 t=open(NARR).read()
