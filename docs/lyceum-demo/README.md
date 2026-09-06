@@ -1,6 +1,13 @@
-# End-to-end pipeline run — fictional firm vs. 601CT0000006541
+# Pipeline runs — one fictional firm, two TxDOT solicitations
 
-**Run:** 2026-09-05. Full report published as an artifact.
+**Runs:** 601CT0000006541 (2026-09-05) and 601CT0000006549 (2026-09-06).
+
+The second solicitation is the one that matters. One run proves the machinery
+works on the case it was built from; two runs tell you whether it works on a case
+it was not. 6549 is a different shape — non-federal indefinite-deliverable, 20
+awards, no interview, **2** work categories instead of 27, no published preclusion
+list, no administrative qualification — and it contradicted four assumptions the
+first gate had quietly baked in.
 
 All firm, personnel, licence and project data here is **invented**. The only real
 names are the seven firms on TxDOT's published Preclusion Document for this
@@ -11,7 +18,11 @@ against, and in none of the fabricated submission documents.
 
 | File | What it is |
 |---|---|
-| `gate.py` | Solicitation parameters, fictional firm library, allocation, and the 20-check gate |
+| `engine.py` | The checks, parameterised by solicitation. One body, two RFPs. |
+| `sol6541.py` | Config: federal specific-deliverable, with interview, 27 categories, 12 pages |
+| `sol6549.py` | Config: non-federal indefinite-deliverable, no interview, 2 categories, 10 pages |
+| `gate.py` | Original 6541 gate and the fictional firm library `sol6541.py` reshapes |
+| `prompts.py` | Coverage of the RFP's named narrative questions (6549 asks four) |
 | `fill_forms.py` | Fills Attachments 1 and 4 by writing cell values into the vendor workbooks |
 | `checks.py` | Mechanical responsiveness checks (naming, page limit, cross-document consistency) |
 | `budget.py` | Page-budget floor **and** ceiling, per section, with a rewrite worklist |
@@ -19,7 +30,14 @@ against, and in none of the fabricated submission documents.
 | `out/*.xlsx` | The two filled workbooks — **gitignored by design** (`*.xlsx` is excluded repo-wide so no real export is ever committed). Regenerate with `fill_forms.py`. |
 | `out/proposal_draft.md` | The 12-page narrative draft |
 
-Run order: `solver.py` → `gate.py` → `fill_forms.py` → `checks.py` → `budget.py`.
+```bash
+python3 sol6541.py            # gate, first solicitation
+python3 sol6549.py            # gate, second solicitation — same engine
+python3 budget.py sol6549 out/proposal_6549.md
+python3 prompts.py sol6549 out/proposal_6549.md
+```
+
+Run order: `solver.py` → `sol<n>.py` → `fill_forms.py` → `checks.py` → `budget.py` → `prompts.py`.
 `fill_forms.py` and `checks.py` need `openpyxl`; the other two are stdlib only.
 `budget.py` and `checks.py` exit non-zero on a failure, so they can gate a build.
 
@@ -40,6 +58,66 @@ Run order: `solver.py` → `gate.py` → `fill_forms.py` → `checks.py` → `bu
 - **Solver: feasible, and every subprovider is load-bearing.** It reproduces the
   hand-built allocation to within two categories, and both of its disagreements
   are corrections.
+
+## What the second solicitation broke
+
+**Four assumptions, all wrong.** The first gate treated as universal: that
+administrative qualification is required (6549 s.11 — not required to compete);
+that preclusion arrives as a published list of firm names (6549 s.6 — the rule
+only, no list, because statewide scope has no project list to match); that there
+is an interview with major categories (6549 — none, the written proposal is the
+entire evaluation); and that a work category is performed by one firm.
+
+**The one-firm-per-category model cannot express this contract.** Both RFPs ask
+for "the percentage of work anticipated for each firm for each category" — a
+matrix, not a mapping. With 27 categories every one happened to sit with a single
+firm and the difference was invisible. With two categories at 80/20 it is
+structural: the prime cannot reach its 30% self-performance floor out of the 20%
+management category, so it must hold a slice of the 80% inspection category, and
+that slice only exists if a category can be split. `ALLOCATION` is now
+`{category: {firm: percent}}` with the task leader tracked separately, because
+there is still exactly one task leader per category however many firms perform it.
+
+**A check whose precondition is absent must report N/A, never PASS.** This is the
+design rule the second solicitation forced. "No precluded firm on the team"
+evaluated against an empty list is not a finding, it is the absence of one, and
+printing PASS beside it tells a reader the team was screened when nothing was.
+The engine now separates four outcomes — pass, fail, not-applicable, and MANUAL
+for a real requirement no code can decide — and the headline count counts only
+what was actually verified. 6541: 22 verified, 3 n/a, 1 manual. 6549: 20
+verified, 4 n/a, **2** manual, the extra one being preclusion, which on this
+solicitation is a question only the firm can answer.
+
+**The weights invert.** Planning leads on 6541 at 30 with technical approach
+trailing at 22; on 6549 key staff leads at 30 and technical approach is 29 while
+planning drops to 20. Page limit 12 becomes 10. A firm reusing last quarter's
+page budget writes its longest section on the criterion that fell furthest.
+
+**6549 asks four questions by name**, three demanding a worked example, where
+6541 gave general guidance. That is a new and checkable failure class — an
+unanswered named question is a scoring zero on a criterion, not a weak paragraph
+— so `prompts.py` verifies each is addressed and reports honestly that its
+example detection is a heuristic a vague sentence can satisfy.
+
+**Attachment 4 is a fillable PDF on 6549, not Excel.** `fill_forms.py` is an
+openpyxl cell-writer and does not apply. The Excel path is not the general case.
+
+**What did generalise:** the format rules are identical apart from the page
+limit; the 30% self-performance floor; the January–March annual renewal window;
+the PM must be a Texas P.E. employed by the prime; the four-attachment package
+shape; and Attachment 3 remains impossible to produce outside CCIS.
+
+## Second-run results (601CT0000006549)
+
+- **Gate: GO.** 20 verified, 0 failed, 4 not applicable, 2 needing a human
+  answer. Prime self-performs 45% against the 30% floor, taking 20% (management)
+  plus 25% of the 80% inspection category across a three-region subprovider team.
+- **Narrative: 92% of budget**, 9.4 of 10 pages — against 51% on the first run.
+  First pass reached 78% because it was written per section against a stated word
+  count from the start; two targeted passes closed the rest. The method the first
+  run inferred, applied deliberately, roughly halved the gap it had to close.
+- **Prompts: 4 of 4** named questions answered, both required worked examples
+  present.
 
 ## Findings
 

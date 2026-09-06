@@ -19,15 +19,17 @@ the rewrite that actually works.
 
 Run: python3 budget.py            (exit 1 if any section is out of band)
 """
-import re, sys
+import re, sys, importlib
 
-NARR = "out/proposal_draft.md"
 WORDS_PER_PAGE = 550
-PAGE_LIMIT = 12
 
-# Weight of each scored criterion, from the solicitation's evaluation table.
-# Keyed by the narrative's section number.
-WEIGHTS = {1: 22, 2: 15, 3: 30, 4: 26}
+# The narrative's section order, mapped to the solicitation's weight keys. Both
+# RFPs in hand use the same five criteria; only the numbers move -- and they move
+# a long way. On 6541 planning leads at 30 and technical approach trails at 22;
+# on 6549 that inverts. A firm reusing last quarter's page budget writes its
+# longest section on the criterion that fell furthest.
+SECTION_CRITERIA = {1: "technical_approach", 2: "pm_experience",
+                    3: "planning_management", 4: "key_staff"}
 
 # A section may run to its budget but not past it (the page limit is hard), and
 # may not fall below FLOOR of it (scored space left uncontested).
@@ -57,13 +59,16 @@ def sections(doc):
     return out
 
 
-def main():
-    doc = open(NARR).read()
+def main(cfgname="sol6541", narr="out/proposal_draft.md"):
+    cfg = importlib.import_module(cfgname)
+    weights = {n: cfg.SOL["weights"][k] for n, k in SECTION_CRITERIA.items()}
+    page_limit = cfg.SOL["page_limit"]
+    doc = open(narr).read()
     secs = sections(doc)
     budgeted = [s for s in secs if s["target"]]
 
     print("=" * 78)
-    print("PAGE BUDGET — floor and ceiling")
+    print(f"PAGE BUDGET — {cfg.SOL['number']} — floor and ceiling")
     print("=" * 78)
     print(f"  {'§':<3}{'section':<34}{'target':>8}{'actual':>8}{'fill':>7}  verdict")
 
@@ -77,7 +82,7 @@ def main():
             failures.append(s)
         if short:
             deficit = round(s["target"] * FLOOR) - s["actual"]
-            worklist.append((WEIGHTS.get(s["num"], 0) * (1 - fill), s, deficit))
+            worklist.append((weights.get(s["num"], 0) * (1 - fill), s, deficit))
         name = s["title"][:33]
         print(f"  {s['num']:<3}{name:<34}{s['target']:>8,}{s['actual']:>8,}"
               f"{fill:>6.0%}  {verdict}")
@@ -89,7 +94,7 @@ def main():
     print(f"  {'':3}{'budgeted sections':<34}{total_t:>8,}{total_a:>8,}"
           f"{total_a/total_t:>6.0%}")
     print(f"  whole document ~{doc_words/WORDS_PER_PAGE:.1f} pages "
-          f"of {PAGE_LIMIT} at {WORDS_PER_PAGE} words/page")
+          f"of {page_limit} at {WORDS_PER_PAGE} words/page")
 
     if worklist:
         print()
@@ -98,7 +103,7 @@ def main():
         print("  run showed a targeted pass reaches ~92% of budget where bulk")
         print("  additions across the document reach only 63-72%.")
         for stake, s, deficit in sorted(worklist, reverse=True, key=lambda x: x[0]):
-            w = WEIGHTS.get(s["num"], 0)
+            w = weights.get(s["num"], 0)
             print(f"    § {s['num']} {s['title'][:40]:<42} +{deficit:>5,} words"
                   f"   {stake:.1f} of {w} pts uncontested")
 
@@ -113,4 +118,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(*sys.argv[1:]))
