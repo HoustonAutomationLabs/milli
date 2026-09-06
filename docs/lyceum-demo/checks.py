@@ -1,5 +1,5 @@
 """Mechanical responsiveness checks — the ones that void a submission."""
-import re, os, openpyxl
+import re, os, openpyxl, q_form
 from gate import PRIME, SOL, ALLOCATION, PROJECT_MANAGER, STAFF
 
 OUT="out"; NARR=f"{OUT}/proposal_draft.md"
@@ -72,10 +72,15 @@ incomplete=[f"C{ws[f'C{x}'].value}" for x in rows
             if (ws[f"F{x}"].value in (None,"","-")) and not ws[f"G{x}"].value]
 c("0.8","Cover page complete (all 22 rows answered)", not incomplete, str(incomplete) if incomplete else "22/22")
 
-# --- comment-must-be-blank rule from the hidden Response Options sheet
-viol=[f"G{x}" for x in list(range(16,24))+list(range(33,37)) if ws[f"G{x}"].value]
-c("Q1","Comment left blank on all dropdown rows", not viol,
-  "hidden sheet marks both options comment-must-be-blank")
+# --- comment rules READ FROM THE FORM, not assumed. Q-59ES and Q-37NY look
+# identical and disagree on this: 6541 forbids a comment on the submittal rows,
+# 6549 permits one. Hardcoding the rule passes here and would misreport there.
+_d=q_form.describe(wb)
+viol=q_form.audit(ws,_d["rules"],_d["dropdowns"],_d["free_text"])
+c("Q1","Every row satisfies the form's own response/comment rules", not viol,
+  str(viol) if viol else
+  "; ".join(f"group{g} {k} must_be_blank={v[1]}"
+            for g,gr in _d["rules"].items() for k,v in list(gr.items())[:1]))
 
 # --- workbook integrity
 c("Q2","Sheet protection, validation and formulas preserved",

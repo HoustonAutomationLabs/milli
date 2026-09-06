@@ -23,6 +23,8 @@ against, and in none of the fabricated submission documents.
 | `sol6549.py` | Config: non-federal indefinite-deliverable, no interview, 2 categories, 10 pages |
 | `gate.py` | Original 6541 gate and the fictional firm library `sol6541.py` reshapes |
 | `prompts.py` | Coverage of the RFP's named narrative questions (6549 asks four) |
+| `q_form.py` | Reads an Attachment 1 questionnaire's response/comment rules from its own hidden sheet |
+| `fill6549.py` | Fills Attachment 1 (Q-37NY) for 6549 using those rules |
 | `fill_forms.py` | Fills Attachments 1 and 4 by writing cell values into the vendor workbooks |
 | `checks.py` | Mechanical responsiveness checks (naming, page limit, cross-document consistency) |
 | `budget.py` | Page-budget floor **and** ceiling, per section, with a rewrite worklist |
@@ -58,6 +60,47 @@ Run order: `solver.py` → `sol<n>.py` → `fill_forms.py` → `checks.py` → `
 - **Solver: feasible, and every subprovider is load-bearing.** It reproduces the
   hand-built allocation to within two categories, and both of its disagreements
   are corrections.
+
+## The two questionnaires are identical except for one invisible flag
+
+Q-59ES (6541) and Q-37NY (6549) are the same form to the eye: same 26 rows, same
+question numbers, same two dropdowns on the same cell ranges, same locked cells,
+same visible instructions, and identical question text on 25 of 26 rows — the
+26th differs by a colon. Only the Euna question IDs change, as instance
+identifiers should.
+
+They disagree in exactly one place, a boolean in a sheet whose state is
+`veryHidden`, which Excel will not offer in the unhide dialog:
+
+| dropdown group | 6541 (Q-59ES) | 6549 (Q-37NY) |
+|---|---|---|
+| certification rows 16–23 (YES/NO) | comment must be blank | comment must be blank |
+| submittal rows 33–36 (INCLUDED / NOT INCLUDED) | **comment must be blank** | **comment optional** |
+
+Nothing visible in either file says so. A firm that learned the rule on one
+solicitation and applied it to the next would be applying a rule that no longer
+holds. In this direction the mistake is harmless, since a blank comment
+satisfies both. The mechanism is not harmless: column 2 of the same hidden table
+is a **comment REQUIRED** flag, and a form with it set reports "A comment is
+required for this response" on a row the firm answered correctly, with no
+visible instruction explaining why.
+
+So `q_form.py` never hardcodes the rule — it decodes the hidden table (col 1
+permitted value, col 2 comment-required, col 3 comment-must-be-blank), maps
+dropdown rows to groups from the sheet's own data validations, and applies what
+it finds. `checks.py` was carrying the hardcoded version; it passed on 6541 and
+would have misreported on 6549, and now reads the form instead.
+
+**This is the clearest argument in the whole exercise for automating this work.**
+The document carries machine-readable constraints that a careful human reader
+cannot see, and they change between solicitations that look the same.
+
+One inference is flagged rather than asserted: free-text answers are written to
+the **Comment** column, because the Response column is pre-filled with `-` on
+those rows and the status formula treats `-` as equivalent to blank — which only
+makes sense if `-` marks "no dropdown applies here". That is read off the
+formula, not documented anywhere, and a real submission should confirm it with
+the procurement engineer.
 
 ## What the second solicitation broke
 
@@ -118,6 +161,15 @@ shape; and Attachment 3 remains impossible to produce outside CCIS.
   run inferred, applied deliberately, roughly halved the gap it had to close.
 - **Prompts: 4 of 4** named questions answered, both required worked examples
   present.
+- **Attachment 1 filled and audit-clean.** Protection, both validations and the
+  status formulas preserved; filename 25/25 characters. Rows 35 and 36 answer
+  **NOT INCLUDED** — the PTC form cannot be produced outside CCIS and the
+  Subprovider PDF was not supplied, and answering INCLUDED for a file that is
+  not in the package would be a false statement on a form the project manager
+  certifies (RFP s.28: a false statement may void the response).
+- **One of four attachments producible here**, for two different reasons:
+  Attachment 3 is CCIS-only on both solicitations, and Attachment 4 is a
+  fillable PDF on 6549 rather than the Excel workbook 6541 supplied.
 
 ## Findings
 
